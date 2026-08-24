@@ -42,3 +42,17 @@ depends = ["build-funcmap", "build-ts"]
 description = "Package the extension into a .vsix including pre-built binaries"
 depends = ["build"]
 run = "npm run package"
+
+[tasks.release]
+description = "Bump version, build/package the extension, tag, and publish a GitHub release"
+usage = 'arg "<version>" help="Version to release (e.g. 0.1.0)"'
+run = [
+    'npm version "${usage_version:?}" --no-git-tag-version',
+    'git add package.json package-lock.json',
+    'git commit -m "Release v${usage_version:?}"',
+    'mise run package',
+    'git push origin HEAD',
+    'git tag "v${usage_version:?}"',
+    'git push origin "v${usage_version:?}"',
+    'gh release create "v${usage_version:?}" "go-template-lsp-${usage_version:?}.vsix" --title "v${usage_version:?}" --generate-notes',
+]
