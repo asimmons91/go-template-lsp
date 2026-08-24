@@ -111,6 +111,72 @@ should not stop at the boundary of the comment.
 - Tag names, attribute names, and attribute value completion (e.g. boolean
   attributes, `<input type="...">` enums) anywhere outside a `{{ }}` action.
 
+### 4.4a Emmet abbreviation expansion
+Unlike every other requirement in this document, this one is **not served by
+the language server at all** — VSCode's Emmet support is a built-in client
+feature that reads the document's TextMate scopes directly, so this is really
+a packaging/configuration requirement rather than a completion provider.
+- **Input:** the user typing an Emmet abbreviation (e.g. `ul>li*3`,
+  `div.card>h2+p`) outside a `{{ }}` action and pressing Tab.
+- **Behavior:** abbreviations expand to full HTML exactly as they would in a
+  `.html` file. Inside a `<style>` block, CSS Emmet abbreviations (e.g. `m10`
+  → `margin: 10px;`) expand the same way. Emmet must **not** attempt to expand
+  anything while the cursor is inside a `{{ }}` action — that text isn't HTML
+  or CSS and shouldn't be treated as such.
+- **Mechanism:**
+  - VSCode's Emmet engine only activates on a document's language ID if that
+    ID is one of its built-in defaults (`html`, `css`, etc.) or is mapped via
+    the `emmet.includeLanguages` setting — an extension cannot silently
+    change a user's global settings, so the extension should prompt once on
+    first activation ("Enable Emmet for Go Template files?") offering to
+    write `"emmet.includeLanguages": { "gotmpl": "html" }` into the user's or
+    workspace's settings, and document the manual step in the README for
+    anyone who declines the prompt.
+  - Correct behavior inside vs. outside `{{ }}` requires nothing extra from
+    us beyond what the TextMate grammar (§6, `gotmpl.tmLanguage.json`) already
+    does: because that grammar includes `text.html.basic` for everything
+    outside a `{{ }}` span, standard HTML/CSS/JS scopes are already assigned
+    correctly there, and `{{ }}` spans get the distinct
+    `meta.embedded.block.gotmpl` scope instead — which Emmet's scope-based
+    context detection won't recognize as HTML or CSS, so it naturally won't
+    try to expand inside one. No new grammar work should be needed; this
+    should mainly need verification against real fixture files, not new code.
+
+### 4.4b HTML tag auto-closing
+Typing `<p>` should auto-insert `</p>` immediately after the cursor, and
+typing `</` inside a closing-tag context should auto-complete to the nearest
+unclosed tag's name — standard editor behavior in `.html` files today, and
+worth calling out separately from §4.4/§4.4a because **it uses a third,
+different mechanism from either of them**, and (unlike Emmet) it does need
+server-side code, not just configuration.
+- **Input:** the user typing `>` to close an opening tag, or `/` immediately
+  after `<`.
+- **Behavior:** insert the matching closing tag as a snippet right after the
+  cursor, leaving the cursor positioned between the two tags. Void/self-closing
+  elements (`<br>`, `<img>`, `<input>`, `<hr>`, `<meta>`, `<link>`, `<area>`,
+  `<base>`, `<col>`, `<embed>`, `<source>`, `<track>`, `<wbr>`) must **not**
+  get an auto-inserted closing tag. Like Emmet, this must not fire while the
+  cursor is inside a `{{ }}` action.
+- **Mechanism:** `vscode-html-languageservice` exposes a dedicated
+  `doTagComplete(document, position, htmlDocument)` function built exactly for
+  this — the same function VSCode's own built-in HTML client calls. The catch:
+  this isn't part of the standard LSP spec, so it needs a custom
+  request/response pair the client and server both implement (VSCode's own
+  html-language-features extension calls theirs `html/tag`; ours can reuse
+  that name). Concretely:
+  - **Client** (`client/src/extension.ts`): listen for `onDidChangeTextDocument`,
+    and when the last-typed character is `>` or `/` outside a `{{ }}` region,
+    send the custom request and apply the returned snippet with
+    `SnippetString`.
+  - **Server** (`server/src/modes/htmlMode.ts`): handle the custom request by
+    calling `doTagComplete` against the masked HTML document, returning
+    `null` when the position resolves inside a `{{ }}` action so the client
+    doesn't insert anything spurious.
+  - This is a good concrete illustration of the distinction drawn in §5.2a:
+    Emmet needed zero server involvement, but this feature — despite feeling
+    similarly "free" since VSCode already does it for plain HTML — actually
+    does require both sides of the client/server boundary to cooperate.
+
 ### 4.5 Embedded CSS completion
 - Property names, values, and selectors inside `<style>...</style>` blocks.
 
@@ -170,6 +236,15 @@ delegate           delegate        delegate        delegate
   out to `go list`/`go/packages` via a small Go helper binary) or as its own
   child process; not yet decided, see §11.
 
+### 5.2a Emmet is outside this pipeline entirely
+Worth flagging explicitly since every other feature in this document flows
+through the server: Emmet (§4.4a) is resolved entirely inside the VSCode
+client from the TextMate grammar's scopes, with no request ever reaching the
+language server. The masking/region-splitting pipeline below exists to serve
+the *language server's* delegates; Emmet's HTML/CSS context detection is a
+separate, editor-native mechanism that happens to work correctly for free as
+long as the grammar's scope assignments (§4.4a) are accurate.
+
 ### 5.3 Masking strategy (see §8 for the known limitation)
 Every virtual document handed to a delegate is the same length, same line
 structure as the original file, with foreign-language spans replaced in place.
@@ -198,7 +273,8 @@ go-template-lsp/
 ├── client/
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── src/extension.ts          # spawns the server via vscode-languageclient
+│   └── src/extension.ts          # spawns the server; also sends the custom
+│                                  # html/tag request on '>' / '/' for §4.4b
 └── server/
     ├── package.json
     ├── tsconfig.json
@@ -207,7 +283,7 @@ go-template-lsp/
         ├── documentRegions.ts    # masking + region detection
         ├── languageModes.ts      # LanguageMode registry / getModeAtPosition
         ├── modes/
-        │   ├── htmlMode.ts
+        │   ├── htmlMode.ts       # completion/hover + doTagComplete for §4.4b
         │   ├── cssMode.ts
         │   ├── jsMode.ts
         │   └── goTemplateMode.ts # talks to gopls; owns the transpiler
@@ -253,6 +329,13 @@ be written.)
   different escaping). Worth a v2 design doc of its own if pursued, since it
   requires re-implementing parts of `html/template`'s unexported `escape.go`
   logic.
+- **Emmet activation depends on a setting we can only request, not force.**
+  Users who dismiss the activation-time prompt (§4.4a) and never manually add
+  `emmet.includeLanguages` will simply get no Emmet support, with no further
+  in-editor signal that anything is missing. Consider re-surfacing the prompt
+  (at most once more) if we detect the user typing an unexpanded abbreviation
+  pattern, though that detection itself risks being noisy or wrong often
+  enough that it may not be worth building.
 
 ## 9. Milestones
 
@@ -261,7 +344,13 @@ be written.)
    TextMate grammar. (Files in §6 marked "already exist" get this far.)
 2. **M2 — HTML/CSS/JS delegation.** Masking pass + region splitter working;
    HTML/CSS/JS completion functional on a test fixture with no Go actions at all
-   (validates the embedding pipeline independent of the Go side).
+   (validates the embedding pipeline independent of the Go side). Verify Emmet
+   abbreviation expansion (§4.4a) against the same fixtures once
+   `emmet.includeLanguages` is configured — this needs no server-side work,
+   just confirmation that the grammar's scopes produce correct behavior. Wire
+   up the custom `html/tag` request (§4.4b) for auto-closing tags on both the
+   client and `htmlMode.ts` in this milestone too, since it reuses the same
+   `vscode-html-languageservice` instance already being stood up here.
 3. **M3 — Go template completion via gopls.** `gotype:` comment parsing,
    transpilation, `goplsClient` wired up; `.Field` completion works on a single
    flat struct (no nesting/ranges yet). Include completion of the `gotype:`
@@ -290,3 +379,16 @@ be written.)
 - Is automatic type inference from `Execute()`/`ExecuteTemplate()` call sites
   (as a fallback when no `gotype:` comment is present) worth the `go/packages`
   workspace-scan cost for v2, or should the comment stay mandatory?
+- Should the `emmet.includeLanguages` mapping (§4.4a) be written via
+  `contributes.configurationDefaults` in `package.json` instead of an
+  activation-time prompt? That would enable it automatically for every user
+  with zero friction, but changes a setting without explicit per-user consent
+  — worth deciding deliberately rather than defaulting to whichever is less
+  code to write.
+- §4.4b covers auto-*inserting* a closing tag when one is first typed. A
+  related but distinct feature — editing `<p>` to `<div>` and having the
+  existing `</p>` update live to `</div>` — is VSCode's separate "linked
+  editing" capability (`textDocument/linkedEditingRange` in the LSP spec, a
+  real standard request unlike `html/tag`). Worth its own small requirement
+  once §4.4b ships, since it's cheap to add on top of the same HTML region
+  detection and people tend to expect both together.
