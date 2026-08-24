@@ -1,0 +1,33 @@
+{
+  "name": "Go Template",
+  "scopeName": "text.html.gohtml",
+  "patterns": [
+    { "include": "#gohtml-comment" },
+    { "include": "#gohtml-action" },
+    { "include": "text.html.basic" }
+  ],
+  "repository": {
+    "gohtml-comment": {
+      "name": "comment.block.gohtml",
+      "begin": "\\{\\{/\\*",
+      "end": "\\*/\\}\\}"
+    },
+    "gohtml-action": {
+      "name": "meta.embedded.block.gohtml",
+      "begin": "\\{\\{-?",
+      "end": "-?\\}\\}",
+      "beginCaptures": { "0": { "name": "punctuation.definition.tag.gohtml" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.tag.gohtml" } },
+      "patterns": [
+        {
+          "match": "\\b(if|else|end|range|with|define|block|template)\\b",
+          "name": "keyword.control.gohtml"
+        },
+        { "match": "\\$[a-zA-Z0-9_]*", "name": "variable.other.gohtml" },
+        { "match": "\\.[a-zA-Z0-9_.]*", "name": "variable.language.gohtml" },
+        { "match": "\"[^\"]*\"", "name": "string.quoted.double.gohtml" },
+        { "match": "\\|", "name": "keyword.operator.pipe.gohtml" }
+      ]
+    }
+  }
+}

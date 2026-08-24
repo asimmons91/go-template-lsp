@@ -1,0 +1,53 @@
+{
+  "name": "go-template-lsp",
+  "displayName": "Go Template Language Support",
+  "description": "Type-aware completion for Go templates (via gopls) plus embedded HTML/CSS/JS intellisense",
+  "version": "0.0.1",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:gotmpl"],
+  "main": "./client/out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "gotmpl",
+        "aliases": ["Go Template", "gotmpl"],
+        "extensions": [".gotmpl", ".gtpl", ".tmpl", ".gohtml"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gotmpl",
+        "scopeName": "text.html.gohtml",
+        "path": "./syntaxes/gohtml.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.css": "css",
+          "source.js": "javascript"
+        }
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Go Template",
+      "properties": {
+        "goTemplate.goplsPath": {
+          "type": "string",
+          "default": "gopls",
+          "description": "Path to the gopls binary used for Go-side type checking inside template actions."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "postinstall": "cd client && npm install && cd ../server && npm install",
+    "compile": "tsc -p ./client && tsc -p ./server",
+    "watch": "tsc -p ./client -w & tsc -p ./server -w",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}
