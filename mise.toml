@@ -1,2 +1,19 @@
 [tools]
+go = "1.27.0"
 node = "24.19.0"
+
+[tasks.test-ts]
+description = "Compile and test the TypeScript client/server"
+run = "npm test"
+
+[tasks.test-go]
+description = "Test the Go funcmap indexer"
+run = "go test ./..."
+dir = "funcmap"
+
+[tasks.test]
+description = "Test both Go and Typescript"
+run = [
+    "mise run test-go",
+    "mise run test-ts"
+]

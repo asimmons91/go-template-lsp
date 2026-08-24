@@ -112,7 +112,6 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
 
     dispose() {
       if (connection) {
-        connection.sendNotification('exit');
         connection.dispose();
       }
       childProcess?.kill();

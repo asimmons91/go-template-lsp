@@ -42,5 +42,15 @@ connection.onCompletion(async (params): Promise<CompletionList | null> => {
 
 documents.onDidClose((e) => languageModes.onDocumentRemoved(e.document));
 
+connection.onDidChangeWatchedFiles((params) => {
+  if (!languageModes) return;
+  for (const change of params.changes) {
+    if (change.uri.endsWith('.go')) {
+      languageModes.invalidateFuncMap();
+      return;
+    }
+  }
+});
+
 documents.listen(connection);
 connection.listen();

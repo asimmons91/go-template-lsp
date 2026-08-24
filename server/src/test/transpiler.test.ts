@@ -1,9 +1,18 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { transpileTemplate } from '../transpiler';
+import { FuncMapEntry } from '../funcmap/funcMapIndex';
 
 const gotype = { importPath: 'example.com/gotypefixture/model', typeName: 'User' };
 const uri = 'file:///tmp/project/views/page.gohtml';
+
+const upperEntry: FuncMapEntry = {
+  name: 'upper',
+  params: [{ name: 's', type: 'string' }],
+  results: ['string'],
+  variadic: false
+};
+const funcMapWithUpper: ReadonlyMap<string, FuncMapEntry> = new Map([['upper', upperEntry]]);
 
 test('transpiles a nested field chain verbatim', () => {
   const { goSource } = transpileTemplate(uri, '{{ .Address.ZipCode }}', gotype);
@@ -83,4 +92,48 @@ test('maps a lone dot to the end of the dot variable', () => {
   const cursor = text.indexOf('.') + 1;
   const { goSource, mapOffset } = transpileTemplate(uri, text, gotype);
   assert.equal(goSource.slice(0, mapOffset(cursor)).endsWith('dot.'), true);
+});
+
+test('rewrites a function call to a Go call', () => {
+  const { goSource } = transpileTemplate(uri, '{{ upper .Name }}', gotype, funcMapWithUpper);
+  assert.match(goSource, /_ = upper\(dot\.Name\)\n/);
+});
+
+test('folds a pipe into a nested call', () => {
+  const { goSource } = transpileTemplate(uri, '{{ .Name | upper }}', gotype, funcMapWithUpper);
+  assert.match(goSource, /_ = upper\(dot\.Name\)\n/);
+});
+
+test('folds multiple pipes right-to-left', () => {
+  const { goSource } = transpileTemplate(uri, '{{ .Name | upper | upper }}', gotype, funcMapWithUpper);
+  assert.match(goSource, /_ = upper\(upper\(dot\.Name\)\)\n/);
+});
+
+test('emits synthetic declarations for funcMap entries', () => {
+  const { goSource } = transpileTemplate(uri, '{{ .Name }}', gotype, funcMapWithUpper);
+  assert.match(goSource, /func upper\(s string\) string \{ panic\("gotmpl"\) \}/);
+});
+
+test('skips synthetic declarations for Go predeclared names', () => {
+  const lenEntry: FuncMapEntry = {
+    name: 'len',
+    params: [{ name: 'v', type: 'interface{}' }],
+    results: ['int'],
+    variadic: false
+  };
+  const { goSource } = transpileTemplate(uri, '{{ .Name }}', gotype, new Map([['len', lenEntry]]));
+  assert.doesNotMatch(goSource, /func len\(/);
+});
+
+test('maps a cursor inside a call argument', () => {
+  const text = '{{ upper .N }}';
+  const cursor = text.indexOf('.N') + 2;
+  const { goSource, mapOffset } = transpileTemplate(uri, text, gotype, funcMapWithUpper);
+  assert.ok(mapOffset(cursor) >= 0);
+  assert.equal(goSource.slice(0, mapOffset(cursor)).endsWith('upper(dot.N'), true);
+});
+
+test('rewrites a $var argument inside a call', () => {
+  const { goSource } = transpileTemplate(uri, '{{ $x := .Name }}{{ upper $x }}', gotype, funcMapWithUpper);
+  assert.match(goSource, /_ = upper\(v_x\)\n/);
 });

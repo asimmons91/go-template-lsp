@@ -5,6 +5,7 @@ import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
 import { getGoTemplateMode } from './modes/goTemplateMode';
+import { getFuncMapIndexer } from './funcmap/funcMapIndex';
 
 export interface LanguageMode {
   getId(): EmbeddedLanguageId;
@@ -19,6 +20,7 @@ export interface ModeAtPosition {
 export interface LanguageModes {
   getModeAtPosition(document: TextDocument, position: Position): ModeAtPosition | undefined;
   onDocumentRemoved(document: TextDocument): void;
+  invalidateFuncMap(): void;
   dispose(): void;
 }
 
@@ -26,7 +28,8 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
   const jsMode = getJSMode();
-  const goTemplateMode = getGoTemplateMode(goplsPath, rootUri);
+  const funcMapIndexer = getFuncMapIndexer(rootUri);
+  const goTemplateMode = getGoTemplateMode(goplsPath, rootUri, funcMapIndexer);
 
   const modes: Partial<Record<EmbeddedLanguageId, LanguageMode>> = {
     html: htmlMode,
@@ -45,6 +48,9 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
     },
     onDocumentRemoved(document) {
       jsMode.onDocumentRemoved(document);
+    },
+    invalidateFuncMap() {
+      funcMapIndexer.invalidate();
     },
     dispose() {
       jsMode.dispose();

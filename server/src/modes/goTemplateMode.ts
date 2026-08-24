@@ -1,16 +1,23 @@
-import { CompletionList, Position } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, CompletionList, Position } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
 import { parseGotypeComment } from '../gotype';
+import { parseTemplate, findPipelineAtOffset } from '../templateParser';
+import { parsePipeline } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
+import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../funcmap/funcMapIndex';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
   dispose(): void;
 }
 
-export function getGoTemplateMode(goplsPath: string, rootUri: string | undefined): GoTemplateLanguageMode {
+export function getGoTemplateMode(
+  goplsPath: string,
+  rootUri: string | undefined,
+  funcMapIndexer: FuncMapIndexer
+): GoTemplateLanguageMode {
   const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
 
   return {
@@ -26,7 +33,20 @@ export function getGoTemplateMode(goplsPath: string, rootUri: string | undefined
       const gotype = parseGotypeComment(text);
       if (!gotype) return CompletionList.create([], false);
 
-      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype);
+      const nodes = parseTemplate(text);
+      const pipe = findPipelineAtOffset(nodes, offset);
+
+      let funcMap: ReadonlyMap<string, FuncMapEntry> = new Map();
+      if (pipe) {
+        const commands = parsePipeline(pipe.pipeline);
+        if (commands.some((c) => c.isCall)) {
+          funcMap = await funcMapIndexer.getIndex();
+        }
+        const native = completeFunctionNames(pipe.pipeline, offset - pipe.pipeStart, funcMap);
+        if (native) return native;
+      }
+
+      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);
       const goOffset = mapOffset(offset);
       if (goOffset < 0) return CompletionList.create([], false);
 
@@ -38,4 +58,50 @@ export function getGoTemplateMode(goplsPath: string, rootUri: string | undefined
       client.dispose();
     }
   };
+}
+
+/**
+ * Offers registered FuncMap keys and template builtins when the cursor sits in a
+ * call command's leading function-name span, with real signatures in the detail.
+ * Returns undefined when the cursor is elsewhere so the caller falls through to
+ * the gopls-backed argument/field completion path.
+ */
+function completeFunctionNames(
+  pipeline: string,
+  cursorRel: number,
+  funcMap: ReadonlyMap<string, FuncMapEntry>
+): CompletionList | undefined {
+  for (const cmd of parsePipeline(pipeline)) {
+    if (cursorRel < cmd.nameStart || cursorRel > cmd.nameEnd) continue;
+
+    const prefix = pipeline.slice(cmd.nameStart, cursorRel);
+    const items: CompletionItem[] = [];
+    for (const entry of [...funcMap.values(), ...BUILTINS]) {
+      if (!entry.name.startsWith(prefix)) continue;
+      items.push({
+        label: entry.name,
+        kind: CompletionItemKind.Function,
+        detail: formatSignature(entry),
+        sortText: `0${entry.name}`
+      });
+    }
+    return CompletionList.create(items, true);
+  }
+  return undefined;
+}
+
+function formatSignature(entry: FuncMapEntry): string {
+  const params = entry.params
+    .map((p, i) => {
+      const type = entry.variadic && i === entry.params.length - 1 ? `...${p.type}` : p.type;
+      return p.name ? `${p.name} ${type}` : type;
+    })
+    .join(', ');
+  const results =
+    entry.results.length === 0
+      ? ''
+      : entry.results.length === 1
+        ? ` ${entry.results[0]}`
+        : ` (${entry.results.join(', ')})`;
+  return `func(${params})${results}`;
 }

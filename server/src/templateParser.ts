@@ -56,6 +56,11 @@ export interface ActionSpan {
   content: string;
 }
 
+export interface PipelineAtOffset {
+  pipeline: string;
+  pipeStart: number;
+}
+
 /**
  * Walks raw template source for `{{ ... }}` action spans, honoring `{{-`/`-}}`
  * trim markers, skipping string literals (double-quoted with escapes and raw
@@ -313,4 +318,31 @@ export function parseTemplate(text: string): TemplateNode[] {
   }
 
   return parseBody();
+}
+
+/**
+ * Finds the innermost pipeline (action/var/if/range/with) whose byte range
+ * contains the given document offset, returning its source text and start offset.
+ */
+export function findPipelineAtOffset(nodes: TemplateNode[], offset: number): PipelineAtOffset | undefined {
+  for (const node of nodes) {
+    if (node.kind === 'action' || node.kind === 'var') {
+      if (node.pipeStart <= offset && offset <= node.pipeEnd) {
+        return { pipeline: node.pipeline, pipeStart: node.pipeStart };
+      }
+      continue;
+    }
+    if (node.kind === 'if' || node.kind === 'range' || node.kind === 'with') {
+      if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
+        return { pipeline: node.pipeline, pipeStart: node.pipeStart };
+      }
+      const found = findPipelineAtOffset(node.body, offset);
+      if (found) return found;
+      if (node.elseBody) {
+        const foundElse = findPipelineAtOffset(node.elseBody, offset);
+        if (foundElse) return foundElse;
+      }
+    }
+  }
+  return undefined;
 }
