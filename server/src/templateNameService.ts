@@ -3,6 +3,7 @@ import * as path from 'path';
 import { minimatch } from 'minimatch';
 import { Location, Range } from 'vscode-languageserver/node';
 import { scanTemplateDirectives } from './templateDirectives';
+import { extractTemplateBodies } from './templateParser';
 
 const TEMPLATE_EXTENSIONS = new Set(['.gohtml', '.gotmpl', '.gtpl', '.tmpl']);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'out', 'dist', '.vscode', 'bin', 'obj']);
@@ -68,6 +69,10 @@ export class TemplateNameService {
   private references = new Map<string, Location[]>();
   private files = new Set<string>();
   private ready: Promise<void>;
+  /** Definition body text keyed by name (first definition wins). */
+  private bodies = new Map<string, string>();
+  /** Name → URI that contributed `bodies`, so removal can drop the right entry. */
+  private bodyContributors = new Map<string, string>();
 
   constructor(
     private roots: string | string[] | undefined,
@@ -90,6 +95,8 @@ export class TemplateNameService {
     this.definitions.clear();
     this.references.clear();
     this.files.clear();
+    this.bodies.clear();
+    this.bodyContributors.clear();
     this.ready = this.scanWorkspace();
   }
 
@@ -171,6 +178,11 @@ export class TemplateNameService {
         this.add(this.references, d.name, loc);
       }
     }
+    for (const [name, entry] of extractTemplateBodies(text)) {
+      if (this.bodies.has(name)) continue;
+      this.bodies.set(name, entry.body);
+      this.bodyContributors.set(name, uri);
+    }
   }
 
   removeDocument(uri: string): void {
@@ -180,6 +192,12 @@ export class TemplateNameService {
         const kept = locs.filter((l) => l.uri !== uri);
         if (kept.length === 0) map.delete(name);
         else map.set(name, kept);
+      }
+    }
+    for (const [name, contributor] of this.bodyContributors) {
+      if (contributor === uri) {
+        this.bodyContributors.delete(name);
+        this.bodies.delete(name);
       }
     }
   }
@@ -235,6 +253,16 @@ export class TemplateNameService {
 
   getReferences(name: string): Location[] {
     return this.references.get(name) ?? [];
+  }
+
+  /**
+   * Returns the raw body text of a `{{define "name"}}`/`{{block "name"}}`
+   * indexed from the workspace (first definition wins), or undefined when the
+   * name has no known definition. Used by the autoescape classifier to resolve
+   * `{{template "name"}}` calls across files.
+   */
+  getBody(name: string): string | undefined {
+    return this.bodies.get(name);
   }
 
   private add(map: Map<string, Location[]>, name: string, loc: Location): void {

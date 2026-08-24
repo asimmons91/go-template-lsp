@@ -458,6 +458,73 @@ export function validateTemplateSyntax(text: string): TemplateSyntaxIssue[] {
   return issues;
 }
 
+export interface TemplateBody {
+  body: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Extracts the raw body text of every `{{define "name"}}` and `{{block "name"}}`
+ * in the source, keyed by name, so the autoescape classifier can resolve a
+ * `{{template "name"}}` call into its definition body for context-sensitive
+ * escaping. `start`/`end` are the directive's own action span (used to attribute
+ * an error found in an uncalled definition). A `block`'s body is its main arm
+ * (up to the first `{{else}}`). First definition wins on a name collision.
+ */
+export function extractTemplateBodies(text: string): Map<string, TemplateBody> {
+  const bodies = new Map<string, TemplateBody>();
+  const spans = scanActions(text);
+
+  interface Frame {
+    kind: string;
+    name?: string;
+    bodyStart: number;
+    span: ActionSpan;
+  }
+  const stack: Frame[] = [];
+
+  for (const span of spans) {
+    if (!text.slice(span.start, span.end).endsWith('}}')) continue;
+    const c = classify(span.content);
+    switch (c.type) {
+      case 'if':
+      case 'range':
+      case 'with':
+        stack.push({ kind: c.type, bodyStart: span.end, span });
+        break;
+      case 'define':
+      case 'block':
+        stack.push({ kind: c.type, name: c.name, bodyStart: span.end, span });
+        break;
+      case 'else':
+      case 'elseif': {
+        const top = stack[stack.length - 1];
+        if (top && top.kind === 'block' && top.name && !bodies.has(top.name)) {
+          bodies.set(top.name, {
+            body: text.slice(top.bodyStart, span.start),
+            start: top.span.start,
+            end: top.span.end,
+          });
+        }
+        break;
+      }
+      case 'end': {
+        const top = stack.pop();
+        if (top && top.name && !bodies.has(top.name)) {
+          bodies.set(top.name, {
+            body: text.slice(top.bodyStart, span.start),
+            start: top.span.start,
+            end: top.span.end,
+          });
+        }
+        break;
+      }
+    }
+  }
+  return bodies;
+}
+
 /**
  * Finds the innermost pipeline (action/var/if/range/with) whose byte range
  * contains the given document offset, returning its source text and start offset.

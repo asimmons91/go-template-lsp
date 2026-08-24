@@ -121,7 +121,7 @@ or duplicate the TextMate grammar from v1, and should the grammar be
 simplified once semantic tokens land?"
 
 - Once semantic tokens (v2 §2.11) are stable, simplify
-  `syntaxes/gotmpl.tmLanguage.json` down to only what semantic tokens
+  `syntaxes/gohtml.tmLanguage.json` down to only what semantic tokens
   _can't_ replace: the initial highlight shown before the language server
   attaches, and the `embeddedLanguages` scope declarations that Emmet (v1
   §4.4a) and tag auto-closing (v1 §4.4b) both depend on. Remove the

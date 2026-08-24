@@ -111,6 +111,21 @@ const cases: { input: string; expect: string | null }[] = [
     input: '<script>var a = `{{if .X}}a{{else}}`{{end}}',
     expect: '{{if}} branches end in different contexts',
   },
+
+  // --- §3.1 generalized contexts: CSS <style>, script type, URL ---
+  { input: '<style>p { color: {{.C}}; }</style>', expect: null },
+  { input: '<style>@media { .x { background: url({{.U}}); } }</style>', expect: null },
+  { input: '<style>p::before { content: "{{.C}}" }</style>', expect: null },
+  { input: '<script type="application/json">{{.X}}</script>', expect: null },
+  { input: '<script type="application/json">{"a": {{.X}}}</script>', expect: null },
+  { input: '<script type="text/plain">{{.X}}</script>', expect: null },
+  { input: '<a href="/foo?q={{.Q}}">x</a>', expect: null },
+  { input: '<script>var s = `{{.T}}`</script>', expect: null },
+  { input: '<script>var s = "abc\\', expect: 'unfinished escape sequence in JS string' },
+  {
+    input: '<script type="application/json">{{if .X}}"a{{else}}1{{end}}</script>',
+    expect: '{{if}} branches end in different contexts',
+  },
 ];
 
 for (const [i, c] of cases.entries()) {
@@ -126,3 +141,41 @@ for (const [i, c] of cases.entries()) {
     }
   });
 }
+
+// §3.1b — cross-template resolution. A resolver of `() => undefined` routes the
+// classifier through workspace mode, where local `{{define}}`/`{{block}}` bodies
+// are resolved for `{{template}}` calls (and unknown names surface as errors).
+function messagesWithResolver(text: string): string[] {
+  return classifyTemplate(text, () => undefined).map((e) => e.message);
+}
+
+test('reports no such template for an unresolved template call', () => {
+  assert.deepEqual(messagesWithResolver('{{template "foo"}}'), ['no such template "foo"']);
+});
+
+test('escapes a called definition body in the calling context', () => {
+  const messages = messagesWithResolver('<div{{template "y"}}>{{define "y"}} foo<b{{end}}');
+  assert.ok(
+    messages.some((m) => m.includes('"<" in attribute name')),
+    `expected "<" in attribute name, got: ${JSON.stringify(messages)}`,
+  );
+});
+
+test('reports cannot compute output context for a recursive template', () => {
+  const messages = messagesWithResolver(
+    '<script>reverseList = [{{template "t"}}]</script>{{define "t"}}{{if .Tail}}{{template "t" .Tail}}{{end}}{{.Head}}",{{end}}',
+  );
+  assert.ok(
+    messages.some((m) => m.includes('cannot compute output context for template "t"')),
+    `expected output context error, got: ${JSON.stringify(messages)}`,
+  );
+});
+
+test('accepts a recursively-defined template that reaches a text fixed point', () => {
+  assert.deepEqual(
+    messagesWithResolver(
+      '{{template "t"}}{{define "t"}}{{if .Tail}}{{template "t" .Tail}}{{end}}{{end}}',
+    ),
+    [],
+  );
+});

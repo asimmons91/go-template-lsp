@@ -156,7 +156,7 @@ export function getLanguageModes(
         if (!mode?.doDiagnostics) continue;
         all.push(...(await mode.doDiagnostics(document, regions)));
       }
-      all.push(...getAutoescapeDiagnostics(document));
+      all.push(...getAutoescapeDiagnostics(document, (name) => templateNames.getBody(name)));
       return all;
     },
     doTagComplete(document, position) {
