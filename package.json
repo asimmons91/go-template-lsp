@@ -2,20 +2,34 @@
   "name": "go-template-lsp",
   "displayName": "Go Template Language Support",
   "description": "Type-aware completion for Go templates (via gopls) plus embedded HTML/CSS/JS intellisense",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "publisher": "go-template-lsp",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:gotmpl"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:gotmpl"
+  ],
   "main": "./client/out/extension.js",
   "contributes": {
     "languages": [
       {
         "id": "gotmpl",
-        "aliases": ["Go Template", "gotmpl"],
-        "extensions": [".gotmpl", ".gtpl", ".tmpl", ".gohtml"],
+        "aliases": [
+          "Go Template",
+          "gotmpl"
+        ],
+        "extensions": [
+          ".gotmpl",
+          ".gtpl",
+          ".tmpl",
+          ".gohtml"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
