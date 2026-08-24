@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import {
   CompletionItem,
   CompletionItemKind,
@@ -9,6 +10,8 @@ import {
   Position,
   Range,
   ReferenceContext,
+  TextEdit,
+  WorkspaceEdit,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
@@ -147,6 +150,45 @@ export function getGoTemplateMode(
       return context.includeDeclaration
         ? refs.concat(templateNames.getDefinitions(directive.name))
         : refs;
+    },
+
+    doPrepareRename(document: TextDocument, position: Position): Range | null {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
+      if (directive) {
+        return Range.create(
+          document.positionAt(directive.nameStart),
+          document.positionAt(directive.nameEnd),
+        );
+      }
+
+      const field = findFieldAccessAt(text, offset);
+      if (!field) return null;
+      return Range.create(document.positionAt(field.start), document.positionAt(field.end));
+    },
+
+    async doRename(
+      document: TextDocument,
+      position: Position,
+      newName: string,
+    ): Promise<WorkspaceEdit | undefined> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
+      if (directive) {
+        return renameTemplateName(directive.name, newName, templateNames);
+      }
+
+      const field = findFieldAccessAt(text, offset);
+      if (!field) return undefined;
+      return renameField(document, field, newName, client, executeSiteIndex, templateNames);
     },
 
     async doHover(document: TextDocument, position: Position): Promise<Hover | undefined> {
@@ -291,15 +333,284 @@ async function resolveGotype(
   document: TextDocument,
   executeSiteIndex: ExecuteSiteIndex,
 ): Promise<ResolvedGotype> {
-  const comment = parseGotypeComment(document.getText());
+  return resolveGotypeFor(document.uri, document.getText(), executeSiteIndex);
+}
+
+/**
+ * Variant of {@link resolveGotype} that takes raw text + URI rather than a
+ * TextDocument, so the field-rename sweep can resolve the root type for sibling
+ * template files read straight from disk.
+ */
+async function resolveGotypeFor(
+  uri: string,
+  text: string,
+  executeSiteIndex: ExecuteSiteIndex,
+): Promise<ResolvedGotype> {
+  const comment = parseGotypeComment(text);
   if (comment) return { gotype: comment, inferred: [] };
 
-  const inferred = await executeSiteIndex.resolveGotype(document.uri);
+  const inferred = await executeSiteIndex.resolveGotype(uri);
   if (inferred.length === 1) {
     const first = inferred[0];
     return { gotype: { importPath: first.importPath, typeName: first.typeName }, inferred };
   }
   return { inferred };
+}
+
+interface FieldAccess {
+  name: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Locates a `.Field` selector under the cursor. Template field access is always
+ * spelled `.Field` regardless of base (`.`, `$var`, or a nested chain), so the
+ * only requirement is that the identifier token is preceded by a `.`.
+ */
+function findFieldAccessAt(text: string, offset: number): FieldAccess | undefined {
+  let start = offset;
+  while (start > 0 && /[A-Za-z0-9_]/.test(text[start - 1])) start--;
+  let end = offset;
+  while (end < text.length && /[A-Za-z0-9_]/.test(text[end])) end++;
+  if (start === end || !/[A-Za-z_]/.test(text[start])) return undefined;
+  if (start === 0 || text[start - 1] !== '.') return undefined;
+  return { name: text.slice(start, end), start, end };
+}
+
+function offsetToPosition(text: string, offset: number): Position {
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text[i] === '\n') {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: offset - lineStart };
+}
+
+function readFileFromUri(uri: string): string | undefined {
+  try {
+    return fs.readFileSync(decodeURIComponent(uri.replace(/^file:\/\//, '')), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+const SYNTHETIC_SUFFIX = '.gotmpl_completion.go';
+
+function isSyntheticUri(uri: string): boolean {
+  return uri.endsWith(SYNTHETIC_SUFFIX);
+}
+
+function sameLocation(a: Location, b: Location): boolean {
+  return (
+    a.uri === b.uri &&
+    a.range.start.line === b.range.start.line &&
+    a.range.start.character === b.range.start.character
+  );
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Every `.fieldName` selector occurrence in the source, as name offsets
+ * (excluding the leading `.`). Word-boundary safe so a field named `Name`
+ * doesn't match `NameLength`.
+ */
+function findSelectorOccurrences(
+  text: string,
+  fieldName: string,
+): Array<{ start: number; end: number }> {
+  const occurrences: Array<{ start: number; end: number }> = [];
+  const re = new RegExp(`\\.(${escapeRegex(fieldName)})(?![A-Za-z0-9_])`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    occurrences.push({ start: m.index + 1, end: m.index + 1 + fieldName.length });
+  }
+  return occurrences;
+}
+
+function dedupeChanges(edits: Map<string, TextEdit[]>): Record<string, TextEdit[]> {
+  const out: Record<string, TextEdit[]> = {};
+  for (const [uri, list] of edits) {
+    const seen = new Set<string>();
+    const unique: TextEdit[] = [];
+    for (const e of list) {
+      const key = `${e.range.start.line}:${e.range.start.character}-${e.range.end.line}:${e.range.end.character}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(e);
+    }
+    unique.sort(
+      (a, b) =>
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
+    );
+    out[uri] = unique;
+  }
+  return out;
+}
+
+/** Extracts per-URI text edits from a WorkspaceEdit whether gopls used `changes` or `documentChanges`. */
+function workspaceEditChanges(
+  edit: WorkspaceEdit | undefined,
+): Map<string, TextEdit[]> | undefined {
+  if (!edit) return undefined;
+  const out = new Map<string, TextEdit[]>();
+  if (edit.changes) {
+    for (const [uri, edits] of Object.entries(edit.changes)) out.set(uri, edits);
+    return out;
+  }
+  if (edit.documentChanges) {
+    for (const dc of edit.documentChanges) {
+      if (!('textDocument' in dc)) continue;
+      const uri = dc.textDocument.uri;
+      const arr = out.get(uri) ?? [];
+      arr.push(...dc.edits);
+      out.set(uri, arr);
+    }
+    return out;
+  }
+  return undefined;
+}
+
+/**
+ * §2.4 (name direction) — renames a `define`/`block` name across every
+ * definition and `template`/`block` call site, reusing the workspace index built
+ * for define/block navigation. A `block` is both a definition and a reference,
+ * so the two lists are merged and de-duplicated.
+ */
+async function renameTemplateName(
+  name: string,
+  newName: string,
+  templateNames: TemplateNameService,
+): Promise<WorkspaceEdit> {
+  await templateNames.ensureReady();
+  const edits = new Map<string, TextEdit[]>();
+  const push = (loc: Location): void => {
+    const arr = edits.get(loc.uri) ?? [];
+    arr.push(TextEdit.replace(loc.range, newName));
+    edits.set(loc.uri, arr);
+  };
+  for (const loc of templateNames.getDefinitions(name)) push(loc);
+  for (const loc of templateNames.getReferences(name)) push(loc);
+  return { changes: dedupeChanges(edits) };
+}
+
+/**
+ * §2.4 (field direction) — renames a struct field referenced by a `.Field` /
+ * `$var.Field` selector. The Go-side rename is delegated to gopls (which
+ * rewrites the declaration and every `.go` reference), and template-side
+ * references across the workspace are rewritten after confirming each resolves
+ * to the same field declaration via gopls (so a same-named field on a different
+ * type — e.g. shadowed by a `range` element — is left untouched).
+ */
+async function renameField(
+  document: TextDocument,
+  field: FieldAccess,
+  newName: string,
+  client: GoplsClient,
+  executeSiteIndex: ExecuteSiteIndex,
+  templateNames: TemplateNameService,
+): Promise<WorkspaceEdit | undefined> {
+  const text = document.getText();
+  const binding = await resolveGotype(document, executeSiteIndex);
+  const gotype = binding.gotype;
+  if (!gotype) return undefined;
+
+  const current = transpileTemplate(document.uri, text, gotype);
+  const goOffset = current.mapOffset(field.start);
+  if (goOffset < 0) return undefined;
+
+  await client.openOrUpdate(current.uri, current.goSource);
+  const defs = await client.definition(current.uri, resolveGoOffset(current.goSource, goOffset));
+  const fieldDecl = defs.find((d) => !isSyntheticUri(d.uri));
+  if (!fieldDecl) return undefined;
+
+  const changes = new Map<string, TextEdit[]>();
+
+  const goText = readFileFromUri(fieldDecl.uri);
+  if (goText !== undefined) {
+    const declOffset = positionToOffset(goText, fieldDecl.range.start);
+    await client.openOrUpdate(fieldDecl.uri, goText);
+    const goChanges = workspaceEditChanges(await client.rename(fieldDecl.uri, declOffset, newName));
+    if (goChanges) {
+      for (const [uri, edits] of goChanges) {
+        if (isSyntheticUri(uri)) continue;
+        changes.set(uri, edits);
+      }
+    }
+  }
+
+  const files: Array<{ uri: string; text: string }> = [{ uri: document.uri, text }];
+  for (const siblingUri of templateNames.getAllFiles()) {
+    if (siblingUri === document.uri) continue;
+    const siblingText = readFileFromUri(siblingUri);
+    if (siblingText === undefined) continue;
+    files.push({ uri: siblingUri, text: siblingText });
+  }
+
+  for (const file of files) {
+    const fileBinding =
+      file.uri === document.uri
+        ? binding
+        : await resolveGotypeFor(file.uri, file.text, executeSiteIndex);
+    const fileGotype = fileBinding.gotype;
+    if (!fileGotype) continue;
+
+    const occurrences = await collectFieldOccurrences(
+      file.uri,
+      file.text,
+      field.name,
+      fileGotype,
+      fieldDecl,
+      client,
+    );
+    if (occurrences.length === 0) continue;
+
+    const arr = changes.get(file.uri) ?? [];
+    for (const occ of occurrences) {
+      arr.push(
+        TextEdit.replace(
+          Range.create(
+            offsetToPosition(file.text, occ.start),
+            offsetToPosition(file.text, occ.end),
+          ),
+          newName,
+        ),
+      );
+    }
+    changes.set(file.uri, arr);
+  }
+
+  return { changes: dedupeChanges(changes) };
+}
+
+async function collectFieldOccurrences(
+  fileUri: string,
+  text: string,
+  fieldName: string,
+  gotype: GotypeDescriptor,
+  fieldDecl: Location,
+  client: GoplsClient,
+): Promise<Array<{ start: number; end: number }>> {
+  const { uri, goSource, mapOffset } = transpileTemplate(fileUri, text, gotype);
+  await client.openOrUpdate(uri, goSource);
+
+  const occurrences: Array<{ start: number; end: number }> = [];
+  for (const occ of findSelectorOccurrences(text, fieldName)) {
+    const goOffset = mapOffset(occ.start);
+    if (goOffset < 0) continue;
+    const defs = await client.definition(uri, resolveGoOffset(goSource, goOffset));
+    if (defs.some((d) => !isSyntheticUri(d.uri) && sameLocation(d, fieldDecl))) {
+      occurrences.push(occ);
+    }
+  }
+  return occurrences;
 }
 
 const TEMPLATE_BUILTIN_NAMES = new Set(BUILTINS.map((b) => b.name));

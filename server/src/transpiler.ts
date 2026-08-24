@@ -96,7 +96,16 @@ function rewriteValue(value: string, scope: Scope): RewriteValueResult {
 
     if (ch === '.') {
       const isRoot = !/[A-Za-z0-9_)\]}"']/.test(prevSignificant);
-      go += isRoot ? `${scope.dotVar}.` : '.';
+      if (isRoot) {
+        // Only keep the selector dot when a field/method identifier follows, so
+        // a bare `.` (the whole value, e.g. `{{$x := .}}` or `{{.}}`) stays valid
+        // Go (`dot`) instead of becoming `dot.`.
+        let k = i + 1;
+        while (k < value.length && /\s/.test(value[k])) k++;
+        go += k < value.length && /[A-Za-z_]/.test(value[k]) ? `${scope.dotVar}.` : scope.dotVar;
+      } else {
+        go += '.';
+      }
       pushBoundary();
       prevSignificant = '.';
       i++;

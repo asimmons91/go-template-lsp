@@ -94,8 +94,8 @@ export class TemplateNameService {
     this.files.add(uri);
     for (const d of scanTemplateDirectives(text)) {
       const range = Range.create(
-        offsetToPosition(text, d.quoteStart),
-        offsetToPosition(text, d.quoteEnd),
+        offsetToPosition(text, d.nameStart),
+        offsetToPosition(text, d.nameEnd),
       );
       const loc: Location = { uri, range };
       if (d.keyword === 'define') {
@@ -142,6 +142,10 @@ export class TemplateNameService {
 
   getAllNames(): string[] {
     return [...this.definitions.keys()];
+  }
+
+  getAllFiles(): string[] {
+    return [...this.files];
   }
 
   /**

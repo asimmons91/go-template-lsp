@@ -103,7 +103,7 @@ test('maps a lone dot to the end of the dot variable', () => {
   const text = '{{ . }}';
   const cursor = text.indexOf('.') + 1;
   const { goSource, mapOffset } = transpileTemplate(uri, text, gotype);
-  assert.equal(goSource.slice(0, mapOffset(cursor)).endsWith('dot.'), true);
+  assert.equal(goSource.slice(0, mapOffset(cursor)).endsWith('dot'), true);
 });
 
 test('rewrites a function call to a Go call', () => {

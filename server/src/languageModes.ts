@@ -4,7 +4,9 @@ import {
   Hover,
   Location,
   Position,
+  Range,
   ReferenceContext,
+  WorkspaceEdit,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
@@ -46,6 +48,17 @@ export interface LanguageMode {
     regions: GoTemplateDocument,
     context: ReferenceContext,
   ): Location[] | undefined | Promise<Location[] | undefined>;
+  doPrepareRename?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): Range | null | Promise<Range | null>;
+  doRename?(
+    document: TextDocument,
+    position: Position,
+    newName: string,
+    regions: GoTemplateDocument,
+  ): WorkspaceEdit | null | undefined | Promise<WorkspaceEdit | null | undefined>;
   doDiagnostics?(
     document: TextDocument,
     regions: GoTemplateDocument,

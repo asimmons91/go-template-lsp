@@ -11,6 +11,7 @@ import {
   Diagnostic,
   Hover,
   Location,
+  WorkspaceEdit,
 } from 'vscode-languageserver/node';
 
 export interface GoplsClient {
@@ -19,6 +20,8 @@ export interface GoplsClient {
   completion(uri: string, offset: number): Promise<CompletionList>;
   definition(uri: string, offset: number): Promise<Location[]>;
   hover(uri: string, offset: number): Promise<Hover | undefined>;
+  /** Runs gopls's own rename at the given position, returning its workspace edit. */
+  rename(uri: string, offset: number, newName: string): Promise<WorkspaceEdit | undefined>;
   /** Returns gopls's latest published diagnostics for the URI, waiting for a fresh publish when the file was just updated. */
   diagnostics(uri: string): Promise<Diagnostic[]>;
   /** Resolves true once a gopls child process has been successfully initialized. */
@@ -180,6 +183,23 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
         const response = await conn.sendRequest<Hover | null>('textDocument/hover', {
           textDocument: { uri },
           position: offsetToPosition(text, offset),
+        });
+        return response ?? undefined;
+      } catch {
+        return undefined;
+      }
+    },
+
+    async rename(uri, offset, newName) {
+      const conn = await ensureStarted();
+      if (!conn) return undefined;
+
+      try {
+        const text = openText.get(uri) ?? '';
+        const response = await conn.sendRequest<WorkspaceEdit | null>('textDocument/rename', {
+          textDocument: { uri },
+          position: offsetToPosition(text, offset),
+          newName,
         });
         return response ?? undefined;
       } catch {

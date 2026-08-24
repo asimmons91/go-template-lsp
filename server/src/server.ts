@@ -7,6 +7,8 @@ import {
   TextDocumentSyncKind,
   CompletionList,
   Position,
+  Range,
+  RenameParams,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
@@ -56,6 +58,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       definitionProvider: true,
       referencesProvider: true,
       hoverProvider: true,
+      renameProvider: { prepareProvider: true },
     },
   };
 });
@@ -101,6 +104,28 @@ connection.onHover(async (params) => {
   if (!result?.mode.doHover) return null;
 
   return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
+});
+
+connection.onPrepareRename(async (params): Promise<Range | null> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doPrepareRename) return null;
+
+  return (await result.mode.doPrepareRename(document, params.position, result.regions)) ?? null;
+});
+
+connection.onRenameRequest(async (params: RenameParams) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doRename) return null;
+
+  return (
+    (await result.mode.doRename(document, params.position, params.newName, result.regions)) ?? null
+  );
 });
 
 connection.onRequest(

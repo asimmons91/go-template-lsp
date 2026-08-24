@@ -1,0 +1,12 @@
+{{- /* gotype: example.com/renamefixture/model.User */ -}}
+<html>
+<body>
+  <p>{{ .Name }}</p>
+  <p>{{ $u := . }}{{ $u.Name }}</p>
+  <ul>
+    {{range .Items}}
+      <li>{{ .Name }}</li>
+    {{end}}
+  </ul>
+</body>
+</html>
