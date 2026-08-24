@@ -9,6 +9,19 @@ const PACKAGE_SYNTHETIC_SUFFIX = '.gotype_pkg.go';
 const MEMBER_SYNTHETIC_SUFFIX = '.gotype_members.go';
 const WARMUP_SYNTHETIC_SUFFIX = '.gotype_warmup.go';
 
+/**
+ * On a cold start gopls may answer completion before the module's package list
+ * is loaded, so completion-driven lookups re-query (with a warmup type-check)
+ * until they get a non-empty result. This matters most when several gopls
+ * subprocesses start at once and contend on the Go build cache.
+ */
+const COLD_START_MAX_ATTEMPTS = 8;
+const COLD_START_RETRY_DELAY_MS = 400;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface GotypeValueSpan {
   /** Document offset of the start of the gotype value (after `gotype:` + whitespace). */
   start: number;
@@ -103,17 +116,18 @@ export async function completePackagePath(
   const pkgName = resolvePackageName(documentUri);
   const uri = `${documentUri}${PACKAGE_SYNTHETIC_SUFFIX}`;
   const source = `package ${pkgName}\n\nimport "${prefix}"`;
+  const warmupUri = `${documentUri}${WARMUP_SYNTHETIC_SUFFIX}`;
+  const warmupSource = `package ${pkgName}\n\nfunc _gotmplWarmup() {\n\tvar _ int\n}\n`;
   await client.openOrUpdate(uri, source);
 
   let list = await client.completion(uri, source.length - 1);
-  if (list.items.length === 0) {
+  for (let attempt = 0; list.items.length === 0 && attempt < COLD_START_MAX_ATTEMPTS; attempt++) {
     // On a cold start gopls may answer import completion before the module's
     // package list is loaded. Type-checking a plain file in this package forces
     // the workspace load, after which the import query resolves.
-    const warmupUri = `${documentUri}${WARMUP_SYNTHETIC_SUFFIX}`;
-    const warmupSource = `package ${pkgName}\n\nfunc _gotmplWarmup() {\n\tvar _ int\n}\n`;
     await client.openOrUpdate(warmupUri, warmupSource);
     await client.completion(warmupUri, warmupSource.length);
+    await delay(COLD_START_RETRY_DELAY_MS);
     list = await client.completion(uri, source.length - 1);
   }
 
@@ -142,7 +156,12 @@ export async function completeStructNames(
   const uri = `${documentUri}${MEMBER_SYNTHETIC_SUFFIX}`;
   const source = `package ${resolvePackageName(documentUri)}\n\nimport gotmpl0 "${packagePath}"\n\nvar _ = gotmpl0.${typePrefix}`;
   await client.openOrUpdate(uri, source);
-  const list = await client.completion(uri, source.length);
+
+  let list = await client.completion(uri, source.length);
+  for (let attempt = 0; list.items.length === 0 && attempt < COLD_START_MAX_ATTEMPTS; attempt++) {
+    await delay(COLD_START_RETRY_DELAY_MS);
+    list = await client.completion(uri, source.length);
+  }
 
   const seen = new Set<string>();
   const items: CompletionItem[] = [];
@@ -167,11 +186,6 @@ export async function resolveGotypeType(
   importPath: string,
   typeName: string,
 ): Promise<boolean> {
-  const uri = `${documentUri}${MEMBER_SYNTHETIC_SUFFIX}`;
-  const source = `package ${resolvePackageName(documentUri)}\n\nimport gotmpl0 "${importPath}"\n\nvar _ = gotmpl0.${typeName}`;
-  await client.openOrUpdate(uri, source);
-  const list = await client.completion(uri, source.length);
-  return list.items.some(
-    (item) => item.label === typeName && item.kind === CompletionItemKind.Struct,
-  );
+  const items = await completeStructNames(client, documentUri, importPath, typeName);
+  return items.some((item) => item.label === typeName);
 }

@@ -1,6 +1,34 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { findGotypeValueRange, findGotypeValueSpan, splitGotypeValue } from '../gotypeCompletion';
+import { CompletionItem, CompletionItemKind, CompletionList } from 'vscode-languageserver/node';
+import {
+  completePackagePath,
+  completeStructNames,
+  findGotypeValueRange,
+  findGotypeValueSpan,
+  splitGotypeValue,
+} from '../gotypeCompletion';
+import { GoplsClient } from '../gopls/goplsClient';
+
+/** A fake gopls client whose completion results are driven by a supplied queue. */
+function fakeClient(completions: CompletionItem[][]): GoplsClient {
+  let calls = 0;
+  const client: GoplsClient = {
+    openOrUpdate: () => Promise.resolve(),
+    completion: () => {
+      const items = completions[Math.min(calls, completions.length - 1)];
+      calls++;
+      return Promise.resolve(CompletionList.create(items, false));
+    },
+    definition: () => Promise.resolve([]),
+    hover: () => Promise.resolve(undefined),
+    rename: () => Promise.resolve(undefined),
+    diagnostics: () => Promise.resolve([]),
+    health: () => Promise.resolve(true),
+    dispose: () => {},
+  };
+  return client;
+}
 
 test('findGotypeValueRange locates a complete gotype value', () => {
   const text = '{{- /* gotype: example.com/gotypefixture/model.User */ -}}\n<p></p>';
@@ -61,4 +89,36 @@ test('splitGotypeValue supports slash-less import paths like fmt', () => {
     typePrefix: 'Str',
     hasTypeSeparator: true,
   });
+});
+
+test('completePackagePath recovers when gopls returns empty on cold start', async () => {
+  const model: CompletionItem = {
+    label: 'example.com/gotypefixture/model',
+    kind: CompletionItemKind.Module,
+  };
+  const client = fakeClient([[], [model]]);
+  const items = await completePackagePath(
+    client,
+    'file:///fixtures/gotype-fixture/views/page.gohtml',
+    'example.com/gotypefixture/mo',
+  );
+  assert.deepEqual(
+    items.map((i) => i.label),
+    ['example.com/gotypefixture/model'],
+  );
+});
+
+test('completeStructNames recovers when gopls returns empty on cold start', async () => {
+  const user: CompletionItem = { label: 'User', kind: CompletionItemKind.Struct };
+  const client = fakeClient([[], [user]]);
+  const items = await completeStructNames(
+    client,
+    'file:///fixtures/gotype-fixture/views/page.gohtml',
+    'example.com/gotypefixture/model',
+    'Us',
+  );
+  assert.deepEqual(
+    items.map((i) => i.label),
+    ['User'],
+  );
 });
