@@ -135,15 +135,18 @@ a packaging/configuration requirement rather than a completion provider.
     write `"emmet.includeLanguages": { "gotmpl": "html" }` into the user's or
     workspace's settings, and document the manual step in the README for
     anyone who declines the prompt.
-  - Correct behavior inside vs. outside `{{ }}` requires nothing extra from
-    us beyond what the TextMate grammar (§6, `gohtml.tmLanguage.json`) already
-    does: because that grammar includes `text.html.basic` for everything
-    outside a `{{ }}` span, standard HTML/CSS/JS scopes are already assigned
-    correctly there, and `{{ }}` spans get the distinct
-    `meta.embedded.block.gohtml` scope instead — which Emmet's scope-based
-    context detection won't recognize as HTML or CSS, so it naturally won't
-    try to expand inside one. No new grammar work should be needed; this
-    should mainly need verification against real fixture files, not new code.
+  - Correct behavior inside vs. outside `{{ }}` does **not** come from the
+    TextMate grammar: Emmet is language-mode based (`emmet.includeLanguages`
+    maps `gotmpl` → `html`, so the whole file is treated as HTML), not
+    scope-based — the `meta.embedded.block.gohtml` scope does nothing to stop
+    Emmet. Instead the client tracks the cursor and publishes a
+    `gotmpl.inAction` context key, and a contributed keybinding (`tab` →
+    plain `tab` when `gotmpl.inAction`) makes Tab fall through to a normal
+    tab inside an action while leaving Emmet expansion intact outside. Emmet
+    *abbreviation suggestions* have no per-position or per-language opt-out,
+    so they are disabled globally via `emmet.showAbbreviationSuggestions:
+    false` (an accepted asymmetry; the LSP's own HTML tag/attribute
+    completion still covers the non-`{{ }}` regions).
 
 ### 4.4b HTML tag auto-closing
 Typing `<p>` should auto-insert `</p>` immediately after the cursor, and

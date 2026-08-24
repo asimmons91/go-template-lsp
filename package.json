@@ -58,8 +58,16 @@
     "configurationDefaults": {
       "emmet.includeLanguages": {
         "gotmpl": "html"
+      },
+      "emmet.showAbbreviationSuggestions": false
+    },
+    "keybindings": [
+      {
+        "key": "tab",
+        "command": "tab",
+        "when": "gotmpl.inAction && config.emmet.triggerExpansionOnTab && editorTextFocus && !editorReadonly && !editorTabMovesFocus"
       }
-    }
+    ]
   },
   "scripts": {
     "postinstall": "cd client && npm install && cd ../server && npm install",
