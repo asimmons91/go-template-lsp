@@ -202,8 +202,10 @@ func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, docs map[
 
 // indexFuncsCall handles `t.Funcs(...)` / `t.Funcs(SomeVar)` calls on a
 // `*template.Template`, resolving each argument to a FuncMap literal (inline or
-// via a package-level variable) and indexing its entries.
-func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, docs map[types.Object]string, byName map[string]Function) {
+// via a package-level variable) and indexing its entries. A known-library
+// constructor argument (e.g. `t.Funcs(sprig.FuncMap())`) marks its library as
+// detected so the bundled signature database can fill in the gaps later.
+func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, docs map[types.Object]string, byName map[string]Function, detected map[string]bool) {
 	if !isTemplateFuncsCall(call, pkg) {
 		return
 	}
@@ -220,6 +222,10 @@ func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[t
 			}
 			if lit := funcMapVars[obj]; lit != nil {
 				indexFuncMapLiteral(lit, pkg, docs, byName)
+			}
+		case *ast.CallExpr:
+			if lib := detectKnownLibrary(a, pkg); lib != nil {
+				detected[lib.ID] = true
 			}
 		}
 	}

@@ -18,6 +18,11 @@ run = [
     "mise run test-ts"
 ]
 
+[tasks.gen-sprig]
+description = "Regenerate the bundled Sprig signature database from the real Sprig module"
+dir = "tools/sprig-gen"
+run = "go run . ../../indexer/signatures/sprig.json"
+
 [tasks.build-indexer]
 description = "Cross-compile the Go workspace indexer (FuncMap + execute-site inference) for Windows, macOS, and Linux"
 dir = "indexer"

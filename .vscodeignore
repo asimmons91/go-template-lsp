@@ -10,6 +10,7 @@ docs/**
 fixtures/**
 indexer/**
 scripts/**
+tools/**
 client/src/**
 client/tsconfig.json
 server/src/**

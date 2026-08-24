@@ -1,0 +1,3398 @@
+{
+  "id": "sprig",
+  "displayName": "Sprig",
+  "detect": [
+    {
+      "package": "github.com/Masterminds/sprig/v3",
+      "funcs": [
+        "FuncMap",
+        "TxtFuncMap",
+        "HtmlFuncMap",
+        "GenericFuncMap"
+      ]
+    },
+    {
+      "package": "github.com/Masterminds/sprig",
+      "funcs": [
+        "FuncMap",
+        "TxtFuncMap",
+        "HtmlFuncMap",
+        "GenericFuncMap"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "abbrev",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "abbrevboth",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "add",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "add1",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "add1f",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "addf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "adler32sum",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "ago",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "all",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "any",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "append",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "atoi",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "int"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "b32dec",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "b32enc",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "b64dec",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "b64enc",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "base",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "bcrypt",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "biggest",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "buildCustomCert",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "camelcase",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "cat",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "ceil",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "chunk",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[][]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "clean",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "coalesce",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "compact",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "concat",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "contains",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "date",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "dateInZone",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "dateModify",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "time.Time"
+        }
+      ],
+      "results": [
+        "time.Time"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "date_in_zone",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "date_modify",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "time.Time"
+        }
+      ],
+      "results": [
+        "time.Time"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "decryptAES",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "deepCopy",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "deepEqual",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "default",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "derivePassword",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "uint32"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        },
+        {
+          "name": "arg3",
+          "type": "string"
+        },
+        {
+          "name": "arg4",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "dict",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "dig",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "dir",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "div",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "divf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "duration",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "durationRound",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "empty",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "encryptAES",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "env",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "expandenv",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "ext",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "fail",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "first",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "float64",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "floor",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "fromJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "genCA",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "genCAWithKey",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "genPrivateKey",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "genSelfSignedCert",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg3",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "genSelfSignedCertWithKey",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg3",
+          "type": "int"
+        },
+        {
+          "name": "arg4",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "genSignedCert",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg3",
+          "type": "int"
+        },
+        {
+          "name": "arg4",
+          "type": "sprig.certificate"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "genSignedCertWithKey",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "[]interface{}"
+        },
+        {
+          "name": "arg3",
+          "type": "int"
+        },
+        {
+          "name": "arg4",
+          "type": "sprig.certificate"
+        },
+        {
+          "name": "arg5",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "sprig.certificate",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "sprig": "github.com/Masterminds/sprig/v3"
+      }
+    },
+    {
+      "name": "get",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "getHostByName",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "has",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "hasKey",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "hasPrefix",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "hasSuffix",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "hello",
+      "params": null,
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "htmlDate",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "htmlDateInZone",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "htpasswd",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "indent",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "initial",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "initials",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "int",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "int64",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "isAbs",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "kebabcase",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "keys",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "kindIs",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "kindOf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "last",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "list",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "lower",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "max",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "maxf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "merge",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mergeOverwrite",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "min",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "minf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mod",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mul",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mulf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mustAppend",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustChunk",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[][]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustCompact",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustDateModify",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "time.Time"
+        }
+      ],
+      "results": [
+        "time.Time",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "mustDeepCopy",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustFirst",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustFromJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustHas",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustInitial",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustLast",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustMerge",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mustMergeOverwrite",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mustPrepend",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustPush",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexFind",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexFindAll",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexMatch",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexReplaceAll",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexReplaceAllLiteral",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRegexSplit",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustRest",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustReverse",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustSlice",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}",
+        "error"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "mustToDate",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "time.Time",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "mustToJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustToPrettyJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustToRawJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustUniq",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "mustWithout",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}",
+        "error"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "must_date_modify",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "time.Time"
+        }
+      ],
+      "results": [
+        "time.Time",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "nindent",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "nospace",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "now",
+      "params": null,
+      "results": [
+        "time.Time"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "omit",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "osBase",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "osClean",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "osDir",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "osExt",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "osIsAbs",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "pick",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "pluck",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "plural",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "prepend",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "push",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "quote",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "randAlpha",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "randAlphaNum",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "randAscii",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "randBytes",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "randInt",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "int"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "randNumeric",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexFind",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexFindAll",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexMatch",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexQuoteMeta",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexReplaceAll",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexReplaceAllLiteral",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "regexSplit",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "repeat",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "replace",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "rest",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "reverse",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "round",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "float64"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "semver",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "*semver.Version",
+        "error"
+      ],
+      "variadic": false,
+      "imports": {
+        "semver": "github.com/Masterminds/semver/v3"
+      }
+    },
+    {
+      "name": "semverCompare",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "bool",
+        "error"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "seq",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "set",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "sha1sum",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "sha256sum",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "sha512sum",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "shuffle",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "slice",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "snakecase",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "sortAlpha",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "split",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "splitList",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "splitn",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "squote",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "sub",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "subf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "float64"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "substr",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "swapcase",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "ternary",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg2",
+          "type": "bool"
+        }
+      ],
+      "results": [
+        "interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "title",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toDate",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "time.Time"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "toDecimal",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "int64"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toPrettyJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toRawJson",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toString",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "toStrings",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trim",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trimAll",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trimPrefix",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trimSuffix",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trimall",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "trunc",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "tuple",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "typeIs",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "typeIsLike",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "bool"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "typeOf",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "uniq",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "unixEpoch",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "time.Time"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false,
+      "imports": {
+        "time": "time"
+      }
+    },
+    {
+      "name": "unset",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "until",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]int"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "untilStep",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "int"
+        },
+        {
+          "name": "arg2",
+          "type": "int"
+        }
+      ],
+      "results": [
+        "[]int"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "untitle",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "upper",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "urlJoin",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "urlParse",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "map[string]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "uuidv4",
+      "params": null,
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "values",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "map[string]interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "without",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "interface{}"
+        },
+        {
+          "name": "arg1",
+          "type": "interface{}"
+        }
+      ],
+      "results": [
+        "[]interface{}"
+      ],
+      "variadic": true
+    },
+    {
+      "name": "wrap",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    },
+    {
+      "name": "wrapWith",
+      "params": [
+        {
+          "name": "arg0",
+          "type": "int"
+        },
+        {
+          "name": "arg1",
+          "type": "string"
+        },
+        {
+          "name": "arg2",
+          "type": "string"
+        }
+      ],
+      "results": [
+        "string"
+      ],
+      "variadic": false
+    }
+  ]
+}

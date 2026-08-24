@@ -180,6 +180,7 @@ func scanPackage(pkg *packages.Package) packageContrib {
 	}
 
 	byName := map[string]Function{}
+	detected := map[string]bool{}
 	funcMapVars := funcMapVarLiterals(pkg)
 	docs := funcDocComments(pkg)
 	ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
@@ -193,12 +194,16 @@ func scanPackage(pkg *packages.Package) packageContrib {
 					indexFuncMapLiteral(node, pkg, docs, byName)
 				}
 			case *ast.CallExpr:
-				indexFuncsCall(node, pkg, funcMapVars, docs, byName)
+				indexFuncsCall(node, pkg, funcMapVars, docs, byName, detected)
 			}
 			return true
 		})
 		ix.scan(file)
 	}
+
+	// Known-function-library signatures (e.g. Sprig) fill any names the
+	// workspace's own literals didn't cover; real type info always wins.
+	mergeKnownLibraries(detected, byName)
 
 	names := make([]string, 0, len(byName))
 	for name := range byName {
