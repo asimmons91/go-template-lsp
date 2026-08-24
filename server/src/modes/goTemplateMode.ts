@@ -180,12 +180,35 @@ export function getGoTemplateMode(
       const pipe = findPipelineAtOffset(nodes, offset);
       if (!pipe) return undefined;
 
-      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype);
+      const cursorRel = offset - pipe.pipeStart;
+      const commands = parsePipeline(pipe.pipeline);
+      const call = commands.find(
+        (c) => c.isCall && cursorRel >= c.nameStart && cursorRel <= c.nameEnd,
+      );
+      if (call) {
+        let entry = BUILTINS.find((b) => b.name === call.name);
+        if (!entry) entry = (await funcMapIndexer.getIndex()).get(call.name);
+        if (!entry) return undefined;
+        if (!entry.file) return undefined;
+        return [
+          Location.create(
+            pathToFileUri(entry.file),
+            Range.create(
+              Position.create(entry.line ?? 0, entry.character ?? 0),
+              Position.create(entry.line ?? 0, entry.character ?? 0),
+            ),
+          ),
+        ];
+      }
+
+      const funcMap = commands.some((c) => c.isCall) ? await funcMapIndexer.getIndex() : undefined;
+      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);
       const goOffset = mapOffset(offset);
       if (goOffset < 0) return undefined;
 
       await client.openOrUpdate(uri, goSource);
-      return client.definition(uri, resolveGoOffset(goSource, goOffset));
+      const defs = await client.definition(uri, resolveGoOffset(goSource, goOffset));
+      return defs.filter((d) => !isSyntheticUri(d.uri));
     },
 
     async doReferences(
@@ -492,6 +515,10 @@ const SYNTHETIC_SUFFIX = '.gotmpl_completion.go';
 
 function isSyntheticUri(uri: string): boolean {
   return uri.endsWith(SYNTHETIC_SUFFIX);
+}
+
+function pathToFileUri(p: string): string {
+  return 'file://' + encodeURI(p.replace(/\\/g, '/'));
 }
 
 function sameLocation(a: Location, b: Location): boolean {

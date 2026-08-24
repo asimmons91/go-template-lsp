@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CompletionList } from 'vscode-languageserver/node';
+import { CompletionList, Location } from 'vscode-languageserver/node';
 import { getLanguageModes } from '../languageModes';
 import { getFuncMapIndexer } from '../indexer/funcMapIndex';
 import { getGoIndexRunner } from '../goIndex';
@@ -24,6 +24,25 @@ async function completeAt(token: string): Promise<CompletionList> {
     const result = languageModes.getModeAtPosition(document, position);
     assert.ok(result, 'expected the gotemplate mode to be resolved inside the {{ }} action');
     return await result.mode.doComplete(document, position, result.regions);
+  } finally {
+    languageModes.dispose();
+  }
+}
+
+async function definitionAt(token: string): Promise<Location[] | undefined> {
+  const text = fs.readFileSync(funcMapFile, 'utf8');
+  const cursorOffset = text.indexOf(token) + token.length;
+  assert.ok(cursorOffset > token.length, `fixture must contain "${token}"`);
+
+  const document = TextDocument.create(`file://${funcMapFile}`, 'gotmpl', 1, text);
+  const position = document.positionAt(cursorOffset);
+
+  const languageModes = getLanguageModes('gopls', `file://${fixtureRoot}`);
+  try {
+    const result = languageModes.getModeAtPosition(document, position);
+    assert.ok(result, 'expected the gotemplate mode to be resolved inside the {{ }} action');
+    assert.ok(result.mode.doDefinition, 'expected the gotemplate mode to support doDefinition');
+    return await result.mode.doDefinition(document, position, result.regions);
   } finally {
     languageModes.dispose();
   }
@@ -75,5 +94,39 @@ test('completes a field inside a function argument via gopls', async () => {
   assert.ok(
     labels.includes('Name'),
     `expected 'Name' among arg completions, got: ${labels.join(', ')}`,
+  );
+});
+
+test('goes to definition on a workspace FuncMap entry', async () => {
+  const defs = await definitionAt('{{ .Name | upperLen');
+  assert.ok(defs && defs.length === 1, `expected one definition, got: ${JSON.stringify(defs)}`);
+  assert.ok(
+    defs[0].uri.endsWith('/views/funcMap.go'),
+    `expected definition in views/funcMap.go, got: ${defs[0].uri}`,
+  );
+  assert.ok(
+    !defs[0].uri.includes('.gotmpl_completion.go'),
+    `definition must not point at the synthetic overlay file, got: ${defs[0].uri}`,
+  );
+});
+
+test('goes to definition on a stdlib-backed FuncMap entry', async () => {
+  const defs = await definitionAt('{{ upper');
+  assert.ok(defs && defs.length === 1, `expected one definition, got: ${JSON.stringify(defs)}`);
+  assert.ok(
+    defs[0].uri.endsWith('strings.go'),
+    `expected definition in the stdlib strings package, got: ${defs[0].uri}`,
+  );
+  assert.ok(
+    !defs[0].uri.includes('.gotmpl_completion.go'),
+    `definition must not point at the synthetic overlay file, got: ${defs[0].uri}`,
+  );
+});
+
+test('go to definition on a builtin function is a no-op', async () => {
+  const defs = await definitionAt('{{ printf');
+  assert.ok(
+    !defs || defs.length === 0,
+    `expected no definition for a builtin, got: ${JSON.stringify(defs)}`,
   );
 });

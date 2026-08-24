@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,10 +27,33 @@ func TestScanFixture(t *testing.T) {
 	if len(upper.Results) != 1 || upper.Results[0] != "string" {
 		t.Fatalf("upper results = %v, want [string]", upper.Results)
 	}
+	// Dependency syntax is loaded (packages.NeedSyntax + NeedDeps in
+	// daemonConfig), so even a stdlib function like strings.ToUpper resolves to
+	// its real declaration position in the Go toolchain's source.
+	if !strings.HasSuffix(upper.File, filepath.Join("strings", "strings.go")) {
+		t.Fatalf("upper.File = %q, want it to end with strings/strings.go", upper.File)
+	}
+
+	shout, ok := byName["shout"]
+	if !ok {
+		t.Fatalf("expected 'shout' in index, got %+v", res.Functions)
+	}
+	if !strings.HasSuffix(shout.File, filepath.Join("views", "funcMap.go")) {
+		t.Fatalf("shout.File = %q, want it to end with views/funcMap.go", shout.File)
+	}
+	if shout.Line != 11 {
+		t.Fatalf("shout.Line = %d, want 11 (0-based line of the closure in funcMap.go)", shout.Line)
+	}
 
 	asUser, ok := byName["asUser"]
 	if !ok {
 		t.Fatalf("expected 'asUser' in index, got %+v", res.Functions)
+	}
+	if !strings.HasSuffix(asUser.File, filepath.Join("views", "funcMap.go")) {
+		t.Fatalf("asUser.File = %q, want it to end with views/funcMap.go", asUser.File)
+	}
+	if asUser.Line != 12 {
+		t.Fatalf("asUser.Line = %d, want 12 (0-based line of the closure in funcMap.go)", asUser.Line)
 	}
 	if asUser.Imports["model"] != "example.com/gotypefixture/model" {
 		t.Fatalf("asUser imports = %v, want model import", asUser.Imports)
@@ -60,5 +84,11 @@ func TestScanFixture(t *testing.T) {
 	}
 	if upperLen.Doc != "upperLen upper-cases its input and reports the resulting length.\n" {
 		t.Fatalf("upperLen doc = %q, want the doc comment text", upperLen.Doc)
+	}
+	if !strings.HasSuffix(upperLen.File, filepath.Join("views", "funcMap.go")) {
+		t.Fatalf("upperLen.File = %q, want it to end with views/funcMap.go", upperLen.File)
+	}
+	if upperLen.Line != 17 || upperLen.Character != 5 {
+		t.Fatalf("upperLen position = %d:%d, want 17:5 (0-based, at `func upperLen(...)`)", upperLen.Line, upperLen.Character)
 	}
 }
