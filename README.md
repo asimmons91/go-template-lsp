@@ -16,6 +16,10 @@ HTML/CSS/JS intellisense in the surrounding template body.
   completion inside `<script>`.
 - Merged diagnostics from the Go template checker, HTML, CSS, and JS/TS.
 - HTML tag auto-closing (typing `>` or `/`).
+- Document formatting (indentation of `{{if}}`/`{{range}}`/`{{end}}` blocks and
+  the HTML they wrap, delegated to Prettier's HTML formatter).
+- Semantic tokens for template actions, coloring an unresolved `.Field`
+  differently from one that resolves on the bound struct.
 
 ## Usage
 
@@ -83,6 +87,23 @@ disambiguate.
   package qualifier to its import path for package-qualified types; `doc` is
   shown on hover. Scanned workspace functions always win over `extraFuncs` on a
   name collision.
+
+## Semantic highlighting
+
+Template actions are highlighted with semantic tokens. A `.Field` that does not
+resolve on the `gotype:`-bound struct is tagged with a custom `unresolved`
+modifier; themes that don't style it fall back to the normal `property` color.
+To call out unresolved fields explicitly, add to your settings:
+
+```jsonc
+{
+  "editor.semanticTokenColorCustomizations": {
+    "rules": {
+      "property.unresolved": "#f14c4c",
+    },
+  },
+}
+```
 
 ## Enabling Emmet
 

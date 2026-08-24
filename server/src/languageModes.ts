@@ -7,6 +7,7 @@ import {
   Position,
   Range,
   ReferenceContext,
+  SemanticTokens,
   SignatureHelp,
   WorkspaceEdit,
 } from 'vscode-languageserver/node';
@@ -90,6 +91,7 @@ export interface ModeAtPosition {
 
 export interface LanguageModes {
   getModeAtPosition(document: TextDocument, position: Position): ModeAtPosition | undefined;
+  getSemanticTokens(document: TextDocument): Promise<SemanticTokens>;
   doDiagnostics(document: TextDocument): Promise<Diagnostic[]>;
   doTagComplete(document: TextDocument, position: Position): string | null;
   onDocumentRemoved(document: TextDocument): void;
@@ -143,6 +145,9 @@ export function getLanguageModes(
       const mode = modes[languageId];
       if (!mode) return undefined;
       return { mode, regions };
+    },
+    getSemanticTokens(document) {
+      return goTemplateMode.getSemanticTokens(document);
     },
     async doDiagnostics(document) {
       const regions = getDocumentRegions(document);

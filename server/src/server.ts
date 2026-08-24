@@ -10,11 +10,14 @@ import {
   Range,
   RenameParams,
   LinkedEditingRangeRequest,
+  SemanticTokensRequest,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
 import { isTemplateFileUri } from './templateNameService';
 import { normalizeExtraFuncs, ExtraFuncsEntry } from './indexer/funcMapIndex';
+import { formatDocument } from './formatting';
+import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from './semanticTokens';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -68,6 +71,15 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       renameProvider: { prepareProvider: true },
       signatureHelpProvider: { triggerCharacters: [' '] },
       linkedEditingRangeProvider: true,
+      documentFormattingProvider: true,
+      semanticTokensProvider: {
+        legend: {
+          tokenTypes: [...SEMANTIC_TOKEN_TYPES],
+          tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
+        },
+        full: true,
+        range: false,
+      },
     },
   };
 });
@@ -155,6 +167,18 @@ connection.onRenameRequest(async (params: RenameParams) => {
   return (
     (await result.mode.doRename(document, params.position, params.newName, result.regions)) ?? null
   );
+});
+
+connection.onRequest(SemanticTokensRequest.type, async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document || !languageModes) return null;
+  return languageModes.getSemanticTokens(document);
+});
+
+connection.onDocumentFormatting(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+  return formatDocument(document, params.options);
 });
 
 connection.onRequest(

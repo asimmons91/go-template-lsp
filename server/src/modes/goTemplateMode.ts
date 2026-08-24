@@ -11,6 +11,7 @@ import {
   Position,
   Range,
   ReferenceContext,
+  SemanticTokens,
   SignatureHelp,
   SignatureInformation,
   TextEdit,
@@ -44,8 +45,10 @@ import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient, WorkspaceFolder } from '../gopls/goplsClient';
 import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
 import { TemplateNameService } from '../templateNameService';
+import { annotateUnresolvedFields, buildSemanticTokens, tokenize } from '../semanticTokens';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
+  getSemanticTokens(document: TextDocument): Promise<SemanticTokens>;
   dispose(): void;
 }
 
@@ -344,6 +347,27 @@ export function getGoTemplateMode(
         });
       }
       return diagnostics;
+    },
+
+    async getSemanticTokens(document: TextDocument): Promise<SemanticTokens> {
+      const text = document.getText();
+      const tokens = tokenize(text);
+
+      const binding = await resolveGotype(document, executeSiteIndex);
+      const gotype = binding.gotype;
+      if (gotype && (await client.health())) {
+        const funcMap = await funcMapIndexer.getIndex();
+        const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);
+        await client.openOrUpdate(uri, goSource);
+        await annotateUnresolvedFields(tokens, async (offset) => {
+          const goOffset = mapOffset(offset);
+          if (goOffset < 0) return false;
+          const defs = await client.definition(uri, resolveGoOffset(goSource, goOffset));
+          return defs.some((d) => !isSyntheticUri(d.uri));
+        });
+      }
+
+      return buildSemanticTokens(tokens, document);
     },
 
     dispose() {
