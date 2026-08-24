@@ -24,8 +24,12 @@ export interface GoplsClient {
   rename(uri: string, offset: number, newName: string): Promise<WorkspaceEdit | undefined>;
   /** Returns gopls's latest published diagnostics for the URI, waiting for a fresh publish when the file was just updated. */
   diagnostics(uri: string): Promise<Diagnostic[]>;
-  /** Resolves true once a gopls child process has been successfully initialized and is alive. */
-  health(): Promise<boolean>;
+  /**
+   * Resolves true once a gopls child process has been successfully initialized
+   * and is alive. `uri` is unused by the single-client implementation but lets a
+   * pool route the probe to the client that owns the file's module.
+   */
+  health(uri?: string): Promise<boolean>;
   /** Kills the current child (if any) and starts a fresh one, re-opening every known synthetic file. */
   restart(): Promise<void>;
   /** Test-only accessor for the underlying child process, if one is running. */

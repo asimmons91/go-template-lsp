@@ -115,8 +115,6 @@ export function getLanguageModes(
   extraFuncs: FuncMapEntry[] = [],
 ): LanguageModes {
   const rootList = normalizeRoots(roots);
-  const workspaceFolders = rootList.map((uri) => ({ uri, name: uri }));
-  const rootUri = rootList[0];
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
   const jsMode = getJSMode(rootList);
@@ -127,8 +125,7 @@ export function getLanguageModes(
   const executeSiteIndex = getExecuteSiteIndex(goIndexRunner, templateNames);
   const goTemplateMode = getGoTemplateMode(
     goplsPath,
-    rootUri,
-    workspaceFolders,
+    rootList,
     funcMapIndexer,
     templateNames,
     executeSiteIndex,

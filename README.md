@@ -52,6 +52,15 @@ disambiguate.
 - A working `go`/`gopls` installation on your `PATH`, or set
   `goTemplate.goplsPath` to an explicit gopls binary.
 
+## Multi-module workspaces
+
+The extension runs one `gopls` process per Go module — the directory of the
+`go.mod` nearest to a template file — and routes each file to its module's
+process. This isolates failures: a crashed or unresponsive `gopls` in one module
+is restarted on its own, without interrupting completion for unrelated modules
+in the same workspace. Template files that live outside any module fall back to
+their workspace folder (or the file's own directory) as the module root.
+
 ## Configuration
 
 - `goTemplate.goplsPath` — path to the gopls binary used for Go-side type

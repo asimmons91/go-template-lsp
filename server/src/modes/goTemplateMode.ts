@@ -42,7 +42,8 @@ import {
 import { scanTemplateDirectives, TemplateNameDirective } from '../templateDirectives';
 import { parsePipeline, PipelineCommand } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
-import { createGoplsClient, GoplsClient, WorkspaceFolder } from '../gopls/goplsClient';
+import { GoplsClient } from '../gopls/goplsClient';
+import { createGoplsClientPool } from '../gopls/goplsClientPool';
 import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
 import { TemplateNameService } from '../templateNameService';
 import { annotateUnresolvedFields, buildSemanticTokens, tokenize } from '../semanticTokens';
@@ -54,13 +55,12 @@ export interface GoTemplateLanguageMode extends LanguageMode {
 
 export function getGoTemplateMode(
   goplsPath: string,
-  rootUri: string | undefined,
-  workspaceFolders: WorkspaceFolder[] | undefined,
+  workspaceRoots: string[],
   funcMapIndexer: FuncMapIndexer,
   templateNames: TemplateNameService,
   executeSiteIndex: ExecuteSiteIndex,
 ): GoTemplateLanguageMode {
-  const client: GoplsClient = createGoplsClient(goplsPath, rootUri, workspaceFolders);
+  const client: GoplsClient = createGoplsClientPool(goplsPath, workspaceRoots);
 
   return {
     getId: () => 'gotemplate',
@@ -303,7 +303,7 @@ export function getGoTemplateMode(
         return diagnostics;
       }
 
-      if (!(await client.health())) return diagnostics;
+      if (!(await client.health(document.uri))) return diagnostics;
 
       const resolved = await resolveGotypeType(
         client,
@@ -355,7 +355,7 @@ export function getGoTemplateMode(
 
       const binding = await resolveGotype(document, executeSiteIndex);
       const gotype = binding.gotype;
-      if (gotype && (await client.health())) {
+      if (gotype && (await client.health(document.uri))) {
         const funcMap = await funcMapIndexer.getIndex();
         const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);
         await client.openOrUpdate(uri, goSource);

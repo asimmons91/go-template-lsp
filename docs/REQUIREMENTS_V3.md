@@ -94,6 +94,11 @@ across multiple `go.mod` files.
   extend to the pooled case — a crash in one module's `gopls` process
   shouldn't take down completion for unrelated modules in the same
   workspace.
+- **Decision (M17):** pool one `gopls` process per module, keyed by the
+  directory of the nearest `go.mod`, and route each request to the client that
+  owns the file's module. This is the option that can deliver the crash
+  isolation the behavior above requires; a single shared instance would couple
+  every module's availability to one process.
 
 ## 3. Resolving v2's open questions
 
