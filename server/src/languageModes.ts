@@ -20,6 +20,7 @@ export interface LanguageMode {
     context: ReferenceContext
   ): Location[] | undefined | Promise<Location[] | undefined>;
   doDiagnostics?(document: TextDocument, regions: GoTemplateDocument): Diagnostic[] | Promise<Diagnostic[]>;
+  doTagComplete?(document: TextDocument, position: Position, regions: GoTemplateDocument): string | null;
 }
 
 export interface ModeAtPosition {
@@ -30,6 +31,7 @@ export interface ModeAtPosition {
 export interface LanguageModes {
   getModeAtPosition(document: TextDocument, position: Position): ModeAtPosition | undefined;
   doDiagnostics(document: TextDocument): Promise<Diagnostic[]>;
+  doTagComplete(document: TextDocument, position: Position): string | null;
   onDocumentRemoved(document: TextDocument): void;
   onDocumentOpened(document: TextDocument): void;
   onDocumentChanged(document: TextDocument): void;
@@ -70,6 +72,11 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
         all.push(...(await mode.doDiagnostics(document, regions)));
       }
       return all;
+    },
+    doTagComplete(document, position) {
+      const regions = getDocumentRegions(document);
+      if (getLanguageAtOffset(regions, document.offsetAt(position)) === 'gotemplate') return null;
+      return htmlMode.doTagComplete?.(document, position, regions) ?? null;
     },
     onDocumentRemoved(document) {
       jsMode.onDocumentRemoved(document);

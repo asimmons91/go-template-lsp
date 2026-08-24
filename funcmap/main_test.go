@@ -40,4 +40,17 @@ func TestScanFixture(t *testing.T) {
 	if len(asUser.Results) != 1 || asUser.Results[0] != "model.User" {
 		t.Fatalf("asUser results = %v, want model.User", asUser.Results)
 	}
+
+	// inlineUpper is registered via an inline .Funcs(template.FuncMap{...}) call,
+	// so it only lands in the index if the .Funcs(...) resolution path works.
+	inlineUpper, ok := byName["inlineUpper"]
+	if !ok {
+		t.Fatalf("expected 'inlineUpper' in index (via .Funcs), got %+v", res.Functions)
+	}
+	if len(inlineUpper.Params) != 1 || inlineUpper.Params[0].Type != "string" {
+		t.Fatalf("inlineUpper params = %+v, want [string]", inlineUpper.Params)
+	}
+	if len(inlineUpper.Results) != 1 || inlineUpper.Results[0] != "string" {
+		t.Fatalf("inlineUpper results = %v, want [string]", inlineUpper.Results)
+	}
 }

@@ -5,7 +5,8 @@ import {
   InitializeParams,
   InitializeResult,
   TextDocumentSyncKind,
-  CompletionList
+  CompletionList,
+  Position
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
@@ -98,6 +99,12 @@ connection.onHover(async (params) => {
   if (!result?.mode.doHover) return null;
 
   return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
+});
+
+connection.onRequest('html/tag', (params: { textDocument: { uri: string }; position: Position }) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document || !languageModes) return null;
+  return languageModes.doTagComplete(document, params.position);
 });
 
 documents.onDidOpen((e) => {

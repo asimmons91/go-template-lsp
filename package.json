@@ -39,6 +39,11 @@
           "description": "Path to the gopls binary used for Go-side type checking inside template actions."
         }
       }
+    },
+    "configurationDefaults": {
+      "emmet.includeLanguages": {
+        "gotmpl": "html"
+      }
     }
   },
   "scripts": {

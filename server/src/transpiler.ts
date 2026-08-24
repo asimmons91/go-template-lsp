@@ -242,6 +242,8 @@ export interface TranspileResult {
   goSource: string;
   /** Maps a template offset to the generated Go offset, or -1 if unmappable. */
   mapOffset(templateOffset: number): number;
+  /** Maps a generated-Go byte range back to the template byte range, or undefined when the range lies outside every pipeline segment. */
+  mapGoRange(goStart: number, goEnd: number): { start: number; end: number } | undefined;
 }
 
 function emitNodes(
@@ -437,8 +439,37 @@ export function transpileTemplate(
         return seg.goStart + seg.charMap[rel];
       }
       return -1;
+    },
+    mapGoRange(goStart: number, goEnd: number): { start: number; end: number } | undefined {
+      const start = mapGoOffsetToTemplate(segments, goStart);
+      const end = mapGoOffsetToTemplate(segments, goEnd);
+      if (start === -1 || end === -1) return undefined;
+      return { start, end };
     }
   };
+}
+
+/**
+ * Inverts a pipeline's char map: given a generated-Go byte offset, returns the
+ * nearest template byte offset, or -1 when the offset falls outside every
+ * pipeline segment (e.g. in the synthetic package/import/function boilerplate).
+ */
+function mapGoOffsetToTemplate(segments: Segment[], goOffset: number): number {
+  let best = -1;
+  let bestDist = Infinity;
+  for (const seg of segments) {
+    const maxGo = seg.goStart + seg.charMap[seg.charMap.length - 1];
+    if (goOffset < seg.goStart || goOffset > maxGo) continue;
+    for (let t = 0; t < seg.charMap.length; t++) {
+      const go = seg.goStart + seg.charMap[t];
+      const dist = Math.abs(go - goOffset);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = seg.pipeStart + t;
+      }
+    }
+  }
+  return best;
 }
 
 const GO_RESERVED = new Set([

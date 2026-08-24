@@ -155,19 +155,41 @@ export function getGoTemplateMode(
       if (!(await client.health())) return diagnostics;
 
       const resolved = await resolveGotypeType(client, document.uri, gotype.importPath, gotype.typeName);
-      if (resolved) return diagnostics;
+      if (!resolved) {
+        const span = findGotypeValueRange(text);
+        const range = span
+          ? Range.create(document.positionAt(span.start), document.positionAt(span.end))
+          : Range.create({ line: 0, character: 0 }, { line: 0, character: 0 });
 
-      const span = findGotypeValueRange(text);
-      const range = span
-        ? Range.create(document.positionAt(span.start), document.positionAt(span.end))
-        : Range.create({ line: 0, character: 0 }, { line: 0, character: 0 });
+        diagnostics.push({
+          range,
+          message: `gotype type "${gotype.importPath}.${gotype.typeName}" not found or not a struct type.`,
+          severity: DiagnosticSeverity.Error,
+          source: 'go-template'
+        });
+        return diagnostics;
+      }
 
-      diagnostics.push({
-        range,
-        message: `gotype type "${gotype.importPath}.${gotype.typeName}" not found or not a struct type.`,
-        severity: DiagnosticSeverity.Error,
-        source: 'go-template'
-      });
+      // The gotype resolves: type-check the transpiled file with gopls and map
+      // its diagnostics (undefined fields, wrong arity, type mismatches) back
+      // onto the original template offsets.
+      const funcMap = await funcMapIndexer.getIndex();
+      const { uri, goSource, mapGoRange } = transpileTemplate(document.uri, text, gotype, funcMap);
+      await client.openOrUpdate(uri, goSource);
+      const goDiagnostics = await client.diagnostics(uri);
+      for (const d of goDiagnostics) {
+        if (isBuiltinUndefinedDiagnostic(d.message)) continue;
+        const goStart = positionToOffset(goSource, d.range.start);
+        const goEnd = positionToOffset(goSource, d.range.end);
+        const mapped = mapGoRange(goStart, goEnd);
+        if (!mapped) continue;
+        diagnostics.push({
+          range: Range.create(document.positionAt(mapped.start), document.positionAt(mapped.end)),
+          message: d.message,
+          severity: d.severity ?? DiagnosticSeverity.Error,
+          source: 'go-template'
+        });
+      }
       return diagnostics;
     },
 
@@ -189,6 +211,36 @@ function resolveGoOffset(goSource: string, goOffset: number): number {
     return goOffset - 1;
   }
   return goOffset;
+}
+
+/**
+ * Converts an LSP position to a byte offset in the given text. Inverse of the
+ * offset-to-position helpers used elsewhere; needed to turn gopls diagnostic
+ * ranges (relative to the synthetic Go source) into offsets for `mapGoRange`.
+ */
+function positionToOffset(text: string, position: Position): number {
+  let line = 0;
+  let lineStart = 0;
+  while (line < position.line) {
+    const nl = text.indexOf('\n', lineStart);
+    if (nl === -1) return text.length;
+    lineStart = nl + 1;
+    line++;
+  }
+  return lineStart + position.character;
+}
+
+const TEMPLATE_BUILTIN_NAMES = new Set(BUILTINS.map((b) => b.name));
+
+/**
+ * Template builtins (and/or/eq/index/printf/...) aren't Go functions, so the
+ * transpiled file reports them as "undefined". Those are false positives for our
+ * purposes — skip them. Go builtins like `len`/`print` resolve natively and never
+ * produce this error.
+ */
+function isBuiltinUndefinedDiagnostic(message: string): boolean {
+  const m = /undefined:\s*([A-Za-z_]\w*)/.exec(message);
+  return m !== null && TEMPLATE_BUILTIN_NAMES.has(m[1]);
 }
 
 /**

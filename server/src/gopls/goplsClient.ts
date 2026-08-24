@@ -5,7 +5,7 @@ import {
   StreamMessageReader,
   StreamMessageWriter
 } from 'vscode-jsonrpc/node';
-import { CompletionItem, CompletionList, Hover, Location } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionList, Diagnostic, Hover, Location } from 'vscode-languageserver/node';
 
 export interface GoplsClient {
   /** Opens the URI on first use, otherwise pushes a full-text update. */
@@ -13,6 +13,8 @@ export interface GoplsClient {
   completion(uri: string, offset: number): Promise<CompletionList>;
   definition(uri: string, offset: number): Promise<Location[]>;
   hover(uri: string, offset: number): Promise<Hover | undefined>;
+  /** Returns gopls's latest published diagnostics for the URI, waiting for a fresh publish when the file was just updated. */
+  diagnostics(uri: string): Promise<Diagnostic[]>;
   /** Resolves true once a gopls child process has been successfully initialized. */
   health(): Promise<boolean>;
   dispose(): void;
@@ -43,6 +45,23 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
   const openVersions = new Map<string, number>();
   const openText = new Map<string, string>();
 
+  // gopls publishes diagnostics as notifications; we cache them per synthetic URI.
+  const diagnosticCache = new Map<string, Diagnostic[]>();
+  const dirty = new Set<string>();
+  const diagnosticWaiters = new Map<string, { resolve: (d: Diagnostic[]) => void; timer: NodeJS.Timeout }[]>();
+
+  function settleDiagnostics(uri: string, diagnostics: Diagnostic[]): void {
+    diagnosticCache.set(uri, diagnostics);
+    dirty.delete(uri);
+    const waiters = diagnosticWaiters.get(uri);
+    if (!waiters) return;
+    diagnosticWaiters.delete(uri);
+    for (const w of waiters) {
+      clearTimeout(w.timer);
+      w.resolve(diagnostics);
+    }
+  }
+
   async function start(): Promise<MessageConnection | undefined> {
     try {
       const child = spawn(goplsPath, [], { stdio: 'pipe' });
@@ -51,6 +70,9 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
         new StreamMessageReader(child.stdout),
         new StreamMessageWriter(child.stdin)
       );
+      conn.onNotification('textDocument/publishDiagnostics', (params: { uri: string; diagnostics: Diagnostic[] }) => {
+        settleDiagnostics(params.uri, params.diagnostics ?? []);
+      });
       conn.listen();
 
       await conn.sendRequest('initialize', {
@@ -75,17 +97,20 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
   return {
     async openOrUpdate(uri, text) {
       const conn = await ensureStarted();
+      const prev = openText.get(uri);
       openText.set(uri, text);
       if (!conn) return;
 
       if (!openVersions.has(uri)) {
         openVersions.set(uri, 1);
+        dirty.add(uri);
         conn.sendNotification('textDocument/didOpen', {
           textDocument: { uri, languageId: 'go', version: 1, text }
         });
-      } else {
+      } else if (prev !== text) {
         const version = openVersions.get(uri)! + 1;
         openVersions.set(uri, version);
+        dirty.add(uri);
         conn.sendNotification('textDocument/didChange', {
           textDocument: { uri, version },
           contentChanges: [{ text }]
@@ -152,6 +177,23 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       return (await ensureStarted()) !== undefined;
     },
 
+    async diagnostics(uri) {
+      const conn = await ensureStarted();
+      if (!conn) return [];
+      if (!dirty.has(uri)) return diagnosticCache.get(uri) ?? [];
+
+      return new Promise<Diagnostic[]>((resolve) => {
+        const timer = setTimeout(() => {
+          const waiters = diagnosticWaiters.get(uri) ?? [];
+          diagnosticWaiters.set(uri, waiters.filter((w) => w.timer !== timer));
+          settleDiagnostics(uri, diagnosticCache.get(uri) ?? []);
+        }, 2000);
+        const waiters = diagnosticWaiters.get(uri) ?? [];
+        waiters.push({ resolve, timer });
+        diagnosticWaiters.set(uri, waiters);
+      });
+    },
+
     dispose() {
       if (connection) {
         connection.dispose();
@@ -159,6 +201,12 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       childProcess?.kill();
       openVersions.clear();
       openText.clear();
+      diagnosticCache.clear();
+      dirty.clear();
+      for (const waiters of diagnosticWaiters.values()) {
+        for (const w of waiters) clearTimeout(w.timer);
+      }
+      diagnosticWaiters.clear();
     }
   };
 }

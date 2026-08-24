@@ -47,7 +47,9 @@ func main() {
 
 // scan indexes every text/template.FuncMap and html/template.FuncMap composite
 // literal reachable from the workspace rooted at dir, resolving each key's
-// function value to a signature via go/packages type information.
+// function value to a signature via go/packages type information. Literals are
+// collected whether they appear standalone or as the argument to a `.Funcs(...)`
+// call on a `*template.Template`.
 func scan(dir string) Result {
 	result := Result{Functions: []Function{}, Errors: []string{}}
 	cfg := &packages.Config{
@@ -67,36 +69,16 @@ func scan(dir string) Result {
 		if pkg.Types == nil || pkg.TypesInfo == nil {
 			continue
 		}
+		funcMapVars := funcMapVarLiterals(pkg)
 		for _, file := range pkg.Syntax {
 			ast.Inspect(file, func(n ast.Node) bool {
-				lit, ok := n.(*ast.CompositeLit)
-				if !ok {
-					return true
-				}
-				if t := pkg.TypesInfo.TypeOf(lit); t == nil || !isFuncMapType(t) {
-					return true
-				}
-				for _, elt := range lit.Elts {
-					kv, ok := elt.(*ast.KeyValueExpr)
-					if !ok {
-						continue
+				switch node := n.(type) {
+				case *ast.CompositeLit:
+					if t := pkg.TypesInfo.TypeOf(node); t != nil && isFuncMapType(t) {
+						indexFuncMapLiteral(node, pkg, byName)
 					}
-					key, ok := kv.Key.(*ast.BasicLit)
-					if !ok || key.Kind != token.STRING {
-						continue
-					}
-					name, err := strconv.Unquote(key.Value)
-					if err != nil {
-						continue
-					}
-					sig := resolveSignature(kv.Value, pkg.TypesInfo)
-					if sig == nil {
-						continue
-					}
-					if _, exists := byName[name]; exists {
-						continue
-					}
-					byName[name] = signatureToFunction(name, sig, pkg.Types)
+				case *ast.CallExpr:
+					indexFuncsCall(node, pkg, funcMapVars, byName)
 				}
 				return true
 			})
@@ -112,6 +94,139 @@ func scan(dir string) Result {
 		result.Functions = append(result.Functions, byName[name])
 	}
 	return result
+}
+
+// funcMapVarLiterals maps each package-level FuncMap variable (declared via a
+// var/assign statement) to the composite literal it is initialized from, so a
+// `.Funcs(SomeVar)` call can resolve back to the literal's entries.
+func funcMapVarLiterals(pkg *packages.Package) map[types.Object]*ast.CompositeLit {
+	out := map[types.Object]*ast.CompositeLit{}
+	record := func(obj types.Object, value ast.Expr) {
+		if obj == nil {
+			return
+		}
+		if lit, ok := value.(*ast.CompositeLit); ok {
+			if t := pkg.TypesInfo.TypeOf(lit); t != nil && isFuncMapType(t) {
+				out[obj] = lit
+			}
+		}
+	}
+
+	for _, file := range pkg.Syntax {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.GenDecl:
+				for _, spec := range node.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for i, name := range vs.Names {
+						if i >= len(vs.Values) {
+							break
+						}
+						record(pkg.TypesInfo.Defs[name], vs.Values[i])
+					}
+				}
+			case *ast.AssignStmt:
+				for i, lhs := range node.Lhs {
+					if i >= len(node.Rhs) {
+						break
+					}
+					id, ok := lhs.(*ast.Ident)
+					if !ok {
+						continue
+					}
+					obj := pkg.TypesInfo.Defs[id]
+					if obj == nil {
+						obj = pkg.TypesInfo.Uses[id]
+					}
+					record(obj, node.Rhs[i])
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// indexFuncMapLiteral extracts each string key -> function signature from a
+// single FuncMap composite literal and merges it into byName (first definition
+// of a name wins).
+func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, byName map[string]Function) {
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.BasicLit)
+		if !ok || key.Kind != token.STRING {
+			continue
+		}
+		name, err := strconv.Unquote(key.Value)
+		if err != nil {
+			continue
+		}
+		sig := resolveSignature(kv.Value, pkg.TypesInfo)
+		if sig == nil {
+			continue
+		}
+		if _, exists := byName[name]; exists {
+			continue
+		}
+		byName[name] = signatureToFunction(name, sig, pkg.Types)
+	}
+}
+
+// indexFuncsCall handles `t.Funcs(...)` / `t.Funcs(SomeVar)` calls on a
+// `*template.Template`, resolving each argument to a FuncMap literal (inline or
+// via a package-level variable) and indexing its entries.
+func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, byName map[string]Function) {
+	if !isTemplateFuncsCall(call, pkg) {
+		return
+	}
+	for _, arg := range call.Args {
+		switch a := arg.(type) {
+		case *ast.CompositeLit:
+			if t := pkg.TypesInfo.TypeOf(a); t != nil && isFuncMapType(t) {
+				indexFuncMapLiteral(a, pkg, byName)
+			}
+		case *ast.Ident:
+			obj := pkg.TypesInfo.Uses[a]
+			if obj == nil {
+				obj = pkg.TypesInfo.Defs[a]
+			}
+			if lit := funcMapVars[obj]; lit != nil {
+				indexFuncMapLiteral(lit, pkg, byName)
+			}
+		}
+	}
+}
+
+// isTemplateFuncsCall reports whether call is a `.Funcs(...)` method invocation
+// on a `*template.Template` from text/template or html/template.
+func isTemplateFuncsCall(call *ast.CallExpr, pkg *packages.Package) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Funcs" {
+		return false
+	}
+	t := pkg.TypesInfo.TypeOf(sel.X)
+	if t == nil {
+		return false
+	}
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	if obj == nil || obj.Name() != "Template" {
+		return false
+	}
+	p := obj.Pkg()
+	return p != nil && (p.Path() == "text/template" || p.Path() == "html/template")
 }
 
 // isFuncMapType reports whether t is the named type template.FuncMap from either

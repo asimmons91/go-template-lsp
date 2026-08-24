@@ -70,6 +70,10 @@ export function getHTMLMode(): LanguageMode {
     },
     doDiagnostics(document, regions) {
       return getHTMLDiagnostics(document.getText(), regions.maskedDocument);
+    },
+    doTagComplete(_document, position, regions) {
+      const htmlDocument = htmlLanguageService.parseHTMLDocument(regions.maskedDocument);
+      return htmlLanguageService.doTagComplete(regions.maskedDocument, position, htmlDocument);
     }
   };
 }
