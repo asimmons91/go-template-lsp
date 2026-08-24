@@ -53,4 +53,12 @@ func TestScanFixture(t *testing.T) {
 	if len(inlineUpper.Results) != 1 || inlineUpper.Results[0] != "string" {
 		t.Fatalf("inlineUpper results = %v, want [string]", inlineUpper.Results)
 	}
+
+	upperLen, ok := byName["upperLen"]
+	if !ok {
+		t.Fatalf("expected 'upperLen' in index, got %+v", res.Functions)
+	}
+	if upperLen.Doc != "upperLen upper-cases its input and reports the resulting length.\n" {
+		t.Fatalf("upperLen doc = %q, want the doc comment text", upperLen.Doc)
+	}
 }

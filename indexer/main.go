@@ -24,6 +24,10 @@ type Function struct {
 	Results  []string          `json:"results"`
 	Variadic bool              `json:"variadic"`
 	Imports  map[string]string `json:"imports,omitempty"`
+	// Doc is the Go doc comment attached to the function's declaration, when it
+	// lives in a scanned (workspace) package. Empty for cross-package functions
+	// (e.g. strings.ToUpper) whose declaration syntax isn't loaded.
+	Doc string `json:"doc,omitempty"`
 }
 
 type Result struct {
@@ -72,16 +76,17 @@ func scan(dir string) Result {
 			continue
 		}
 		funcMapVars := funcMapVarLiterals(pkg)
+		docs := funcDocComments(pkg)
 		ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
 		for _, file := range pkg.Syntax {
 			ast.Inspect(file, func(n ast.Node) bool {
 				switch node := n.(type) {
 				case *ast.CompositeLit:
 					if t := pkg.TypesInfo.TypeOf(node); t != nil && isFuncMapType(t) {
-						indexFuncMapLiteral(node, pkg, byName)
+						indexFuncMapLiteral(node, pkg, docs, byName)
 					}
 				case *ast.CallExpr:
-					indexFuncsCall(node, pkg, funcMapVars, byName)
+					indexFuncsCall(node, pkg, funcMapVars, docs, byName)
 				}
 				return true
 			})
@@ -156,10 +161,47 @@ func funcMapVarLiterals(pkg *packages.Package) map[types.Object]*ast.CompositeLi
 	return out
 }
 
+// funcDocComments maps each workspace-declared function, method, and package-level
+// function variable to its attached Go doc comment. Cross-package objects never
+// appear here because their syntax isn't loaded, so their doc stays empty.
+func funcDocComments(pkg *packages.Package) map[types.Object]string {
+	out := map[types.Object]string{}
+	for _, file := range pkg.Syntax {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.FuncDecl:
+				if node.Doc == nil {
+					return true
+				}
+				if obj := pkg.TypesInfo.Defs[node.Name]; obj != nil {
+					out[obj] = node.Doc.Text()
+				}
+			case *ast.GenDecl:
+				if node.Doc == nil {
+					return true
+				}
+				for _, spec := range node.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, name := range vs.Names {
+						if obj := pkg.TypesInfo.Defs[name]; obj != nil {
+							out[obj] = node.Doc.Text()
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
 // indexFuncMapLiteral extracts each string key -> function signature from a
 // single FuncMap composite literal and merges it into byName (first definition
 // of a name wins).
-func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, byName map[string]Function) {
+func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, docs map[types.Object]string, byName map[string]Function) {
 	for _, elt := range lit.Elts {
 		kv, ok := elt.(*ast.KeyValueExpr)
 		if !ok {
@@ -173,21 +215,25 @@ func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, byName ma
 		if err != nil {
 			continue
 		}
-		sig := resolveSignature(kv.Value, pkg.TypesInfo)
+		sig, obj := resolveSignature(kv.Value, pkg.TypesInfo)
 		if sig == nil {
 			continue
 		}
 		if _, exists := byName[name]; exists {
 			continue
 		}
-		byName[name] = signatureToFunction(name, sig, pkg.Types)
+		fn := signatureToFunction(name, sig, pkg.Types)
+		if obj != nil {
+			fn.Doc = docs[obj]
+		}
+		byName[name] = fn
 	}
 }
 
 // indexFuncsCall handles `t.Funcs(...)` / `t.Funcs(SomeVar)` calls on a
 // `*template.Template`, resolving each argument to a FuncMap literal (inline or
 // via a package-level variable) and indexing its entries.
-func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, byName map[string]Function) {
+func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, docs map[types.Object]string, byName map[string]Function) {
 	if !isTemplateFuncsCall(call, pkg) {
 		return
 	}
@@ -195,7 +241,7 @@ func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[t
 		switch a := arg.(type) {
 		case *ast.CompositeLit:
 			if t := pkg.TypesInfo.TypeOf(a); t != nil && isFuncMapType(t) {
-				indexFuncMapLiteral(a, pkg, byName)
+				indexFuncMapLiteral(a, pkg, docs, byName)
 			}
 		case *ast.Ident:
 			obj := pkg.TypesInfo.Uses[a]
@@ -203,7 +249,7 @@ func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[t
 				obj = pkg.TypesInfo.Defs[a]
 			}
 			if lit := funcMapVars[obj]; lit != nil {
-				indexFuncMapLiteral(lit, pkg, byName)
+				indexFuncMapLiteral(lit, pkg, docs, byName)
 			}
 		}
 	}
@@ -254,18 +300,18 @@ func isFuncMapType(t types.Type) bool {
 	return pkg.Path() == "text/template" || pkg.Path() == "html/template"
 }
 
-func resolveSignature(expr ast.Expr, info *types.Info) *types.Signature {
+func resolveSignature(expr ast.Expr, info *types.Info) (*types.Signature, types.Object) {
 	switch e := expr.(type) {
 	case *ast.Ident:
-		return objSignature(info.Uses[e])
+		return objSignature(info.Uses[e]), info.Uses[e]
 	case *ast.SelectorExpr:
-		return objSignature(info.Uses[e.Sel])
+		return objSignature(info.Uses[e.Sel]), info.Uses[e.Sel]
 	case *ast.FuncLit:
 		if sig, ok := info.TypeOf(e).(*types.Signature); ok {
-			return sig
+			return sig, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func objSignature(obj types.Object) *types.Signature {

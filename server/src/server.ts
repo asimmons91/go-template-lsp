@@ -9,6 +9,7 @@ import {
   Position,
   Range,
   RenameParams,
+  LinkedEditingRangeRequest,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
@@ -59,6 +60,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       referencesProvider: true,
       hoverProvider: true,
       renameProvider: { prepareProvider: true },
+      signatureHelpProvider: { triggerCharacters: [' '] },
+      linkedEditingRangeProvider: true,
     },
   };
 });
@@ -104,6 +107,26 @@ connection.onHover(async (params) => {
   if (!result?.mode.doHover) return null;
 
   return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
+});
+
+connection.onSignatureHelp(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doSignatureHelp) return null;
+
+  return (await result.mode.doSignatureHelp(document, params.position, result.regions)) ?? null;
+});
+
+connection.onRequest(LinkedEditingRangeRequest.type, (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doLinkedEditing) return null;
+
+  return result.mode.doLinkedEditing(document, params.position, result.regions);
 });
 
 connection.onPrepareRename(async (params): Promise<Range | null> => {

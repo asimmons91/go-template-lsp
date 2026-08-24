@@ -7,9 +7,12 @@ import {
   DiagnosticSeverity,
   Hover,
   Location,
+  ParameterInformation,
   Position,
   Range,
   ReferenceContext,
+  SignatureHelp,
+  SignatureInformation,
   TextEdit,
   WorkspaceEdit,
 } from 'vscode-languageserver/node';
@@ -27,9 +30,16 @@ import {
   resolveGotypeType,
   splitGotypeValue,
 } from '../gotypeCompletion';
-import { parseTemplate, findPipelineAtOffset, validateTemplateSyntax } from '../templateParser';
-import { scanTemplateDirectives } from '../templateDirectives';
-import { parsePipeline } from '../pipeline';
+import {
+  parseTemplate,
+  findPipelineAtOffset,
+  validateTemplateSyntax,
+  scanActions,
+  classify,
+  ActionSpan,
+} from '../templateParser';
+import { scanTemplateDirectives, TemplateNameDirective } from '../templateDirectives';
+import { parsePipeline, PipelineCommand } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
 import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
@@ -102,6 +112,47 @@ export function getGoTemplateMode(
 
       await client.openOrUpdate(uri, goSource);
       return client.completion(uri, goOffset);
+    },
+
+    async doSignatureHelp(
+      document: TextDocument,
+      position: Position,
+      regions: GoTemplateDocument,
+    ): Promise<SignatureHelp | null> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+
+      const span = regions.actionSpans.find((s) => s.start <= offset && offset <= s.end);
+      if (!span) return null;
+
+      const nodes = parseTemplate(text);
+      const pipe = findPipelineAtOffset(nodes, offset);
+      if (!pipe) return null;
+
+      const commands = parsePipeline(pipe.pipeline);
+      const cursorRel = offset - pipe.pipeStart;
+
+      let target: PipelineCommand | undefined;
+      let targetIndex = -1;
+      for (let i = 0; i < commands.length; i++) {
+        const cmd = commands[i];
+        if (!cmd.isCall) continue;
+        if (cursorRel >= cmd.start && cursorRel <= cmd.end) {
+          target = cmd;
+          targetIndex = i;
+        }
+      }
+      if (!target) return null;
+
+      let entry = BUILTINS.find((b) => b.name === target.name);
+      if (!entry) entry = (await funcMapIndexer.getIndex()).get(target.name);
+      if (!entry) return null;
+
+      return {
+        signatures: [buildSignatureInformation(entry)],
+        activeSignature: 0,
+        activeParameter: activeParameterFor(target, targetIndex, cursorRel, entry.params.length),
+      };
     },
 
     async doDefinition(
@@ -194,6 +245,20 @@ export function getGoTemplateMode(
     async doHover(document: TextDocument, position: Position): Promise<Hover | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
+
+      const directive = scanTemplateDirectives(text).find(
+        (d) =>
+          (d.keyword === 'define' || d.keyword === 'block') &&
+          d.nameStart <= offset &&
+          offset <= d.nameEnd,
+      );
+      if (directive) {
+        const comment = findDefineComment(text, directive);
+        return comment ? { contents: { kind: 'markdown', value: comment } } : undefined;
+      }
+
+      const functionHover = await hoverFunctionName(text, offset, funcMapIndexer);
+      if (functionHover) return functionHover;
 
       const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return undefined;
@@ -698,4 +763,99 @@ function formatSignature(entry: FuncMapEntry): string {
         ? ` ${entry.results[0]}`
         : ` (${entry.results.join(', ')})`;
   return `func(${params})${results}`;
+}
+
+/**
+ * Builds a signature-help entry for a FuncMap/builtin function from its index
+ * entry: one `ParameterInformation` per parameter, with the last marked variadic
+ * when applicable, and the same label used in completion details.
+ */
+function buildSignatureInformation(entry: FuncMapEntry): SignatureInformation {
+  const parameters: ParameterInformation[] = entry.params.map((p, i) => {
+    const type = entry.variadic && i === entry.params.length - 1 ? `...${p.type}` : p.type;
+    return { label: p.name ? `${p.name} ${type}` : type };
+  });
+  return { label: formatSignature(entry), parameters };
+}
+
+/**
+ * Determines which parameter the cursor is editing. A chained command receives
+ * the piped-in value as argument 0, so explicit arguments start at index 1; the
+ * result is clamped to the last declared parameter (variadic functions fold all
+ * trailing arguments into it).
+ */
+function activeParameterFor(
+  cmd: PipelineCommand,
+  commandIndex: number,
+  cursorRel: number,
+  paramCount: number,
+): number {
+  let active = commandIndex === 0 ? 0 : 1;
+  for (const arg of cmd.args) {
+    if (cursorRel <= arg.end) break;
+    active++;
+  }
+  return Math.max(0, Math.min(active, paramCount - 1));
+}
+
+/**
+ * Finds a `{{/* ... *\/}}` comment placed directly above a `{{define}}`/`{{block}}`
+ * directive (only whitespace in between) and returns its inner text.
+ */
+function findDefineComment(text: string, directive: TemplateNameDirective): string | undefined {
+  const spans = scanActions(text);
+
+  let dirSpan: ActionSpan | undefined;
+  for (const s of spans) {
+    if (s.start <= directive.nameStart && directive.nameEnd <= s.end) {
+      dirSpan = s;
+      break;
+    }
+  }
+  if (!dirSpan) return undefined;
+
+  let nearest: ActionSpan | undefined;
+  for (const s of spans) {
+    if (s.end > dirSpan.start) break;
+    nearest = s;
+  }
+  if (!nearest || classify(nearest.content).type !== 'comment') return undefined;
+  if (/[^\s]/.test(text.slice(nearest.end, dirSpan.start))) return undefined;
+  return commentText(nearest);
+}
+
+function commentText(span: ActionSpan): string {
+  const start = span.content.indexOf('/*');
+  const end = span.content.lastIndexOf('*/');
+  if (start === -1 || end === -1 || end <= start) return '';
+  return span.content.slice(start + 2, end).trim();
+}
+
+/**
+ * Hovers the name of a FuncMap/builtin call command: its Go doc comment when the
+ * indexer captured one, otherwise the formatted signature as a code block.
+ */
+async function hoverFunctionName(
+  text: string,
+  offset: number,
+  funcMapIndexer: FuncMapIndexer,
+): Promise<Hover | undefined> {
+  const nodes = parseTemplate(text);
+  const pipe = findPipelineAtOffset(nodes, offset);
+  if (!pipe) return undefined;
+
+  const cursorRel = offset - pipe.pipeStart;
+  for (const cmd of parsePipeline(pipe.pipeline)) {
+    if (!cmd.isCall || cursorRel < cmd.nameStart || cursorRel > cmd.nameEnd) continue;
+
+    let entry = BUILTINS.find((b) => b.name === cmd.name);
+    if (!entry) entry = (await funcMapIndexer.getIndex()).get(cmd.name);
+    if (!entry) return undefined;
+
+    if (entry.doc?.trim()) {
+      return { contents: { kind: 'markdown', value: entry.doc.trim() } };
+    }
+    return { contents: { kind: 'markdown', value: `\`\`\`go\n${formatSignature(entry)}\n\`\`\`` } };
+  }
+  return undefined;
 }

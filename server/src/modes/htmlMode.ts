@@ -75,5 +75,14 @@ export function getHTMLMode(): LanguageMode {
       const htmlDocument = htmlLanguageService.parseHTMLDocument(regions.maskedDocument);
       return htmlLanguageService.doTagComplete(regions.maskedDocument, position, htmlDocument);
     },
+    doLinkedEditing(_document, position, regions) {
+      const htmlDocument = htmlLanguageService.parseHTMLDocument(regions.maskedDocument);
+      const ranges = htmlLanguageService.findLinkedEditingRanges(
+        regions.maskedDocument,
+        position,
+        htmlDocument,
+      );
+      return ranges ? { ranges } : null;
+    },
   };
 }

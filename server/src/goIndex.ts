@@ -13,6 +13,8 @@ export interface FuncMapEntry {
   results: string[];
   variadic: boolean;
   imports?: Record<string, string>;
+  /** Go doc comment on the function's declaration, when declared in the workspace. */
+  doc?: string;
 }
 
 export interface InferredType {

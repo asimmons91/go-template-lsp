@@ -2,10 +2,12 @@ import {
   CompletionList,
   Diagnostic,
   Hover,
+  LinkedEditingRanges,
   Location,
   Position,
   Range,
   ReferenceContext,
+  SignatureHelp,
   WorkspaceEdit,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -42,6 +44,16 @@ export interface LanguageMode {
     position: Position,
     regions: GoTemplateDocument,
   ): Hover | undefined | Promise<Hover | undefined>;
+  doSignatureHelp?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): SignatureHelp | null | Promise<SignatureHelp | null>;
+  doLinkedEditing?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): LinkedEditingRanges | null;
   doReferences?(
     document: TextDocument,
     position: Position,
