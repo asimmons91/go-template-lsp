@@ -36,7 +36,7 @@ export type TemplateNode =
       pipeline: string;
       pipeStart: number;
       pipeEnd: number;
-      vars?: [string, string];
+      vars?: [string, string] | [string];
       body: TemplateNode[];
       elseBody?: TemplateNode[];
     }
@@ -167,7 +167,7 @@ export type Classification =
   | { type: 'else' }
   | { type: 'elseif'; pipeline: string }
   | { type: 'if'; pipeline: string }
-  | { type: 'range'; pipeline: string; vars?: [string, string] }
+  | { type: 'range'; pipeline: string; vars?: [string, string] | [string] }
   | { type: 'with'; pipeline?: string; var?: string }
   | { type: 'define'; name: string }
   | { type: 'block'; name: string; pipeline?: string }
@@ -206,6 +206,8 @@ export function classify(content: string): Classification {
       const rest = kw.rest.trim();
       const m = /^\$(\w+)\s*,\s*\$(\w+)\s*:=\s*([\s\S]*)$/.exec(rest);
       if (m) return { type: 'range', vars: [`$${m[1]}`, `$${m[2]}`], pipeline: m[3].trim() };
+      const s = /^\$(\w+)\s*:=\s*([\s\S]*)$/.exec(rest);
+      if (s) return { type: 'range', vars: [`$${s[1]}`], pipeline: s[2].trim() };
       return { type: 'range', pipeline: rest || '.' };
     }
     case 'with': {

@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/token"
 	"go/types"
 	"os"
-	"strconv"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -77,60 +75,6 @@ func scan(dir string) Result {
 	return result
 }
 
-// funcMapVarLiterals maps each package-level FuncMap variable (declared via a
-// var/assign statement) to the composite literal it is initialized from, so a
-// `.Funcs(SomeVar)` call can resolve back to the literal's entries.
-func funcMapVarLiterals(pkg *packages.Package) map[types.Object]*ast.CompositeLit {
-	out := map[types.Object]*ast.CompositeLit{}
-	record := func(obj types.Object, value ast.Expr) {
-		if obj == nil {
-			return
-		}
-		if lit, ok := value.(*ast.CompositeLit); ok {
-			if t := pkg.TypesInfo.TypeOf(lit); t != nil && isFuncMapType(t) {
-				out[obj] = lit
-			}
-		}
-	}
-
-	for _, file := range pkg.Syntax {
-		ast.Inspect(file, func(n ast.Node) bool {
-			switch node := n.(type) {
-			case *ast.GenDecl:
-				for _, spec := range node.Specs {
-					vs, ok := spec.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-					for i, name := range vs.Names {
-						if i >= len(vs.Values) {
-							break
-						}
-						record(pkg.TypesInfo.Defs[name], vs.Values[i])
-					}
-				}
-			case *ast.AssignStmt:
-				for i, lhs := range node.Lhs {
-					if i >= len(node.Rhs) {
-						break
-					}
-					id, ok := lhs.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					obj := pkg.TypesInfo.Defs[id]
-					if obj == nil {
-						obj = pkg.TypesInfo.Uses[id]
-					}
-					record(obj, node.Rhs[i])
-				}
-			}
-			return true
-		})
-	}
-	return out
-}
-
 // funcDocComments maps each workspace-declared function, method, and package-level
 // function variable to its attached Go doc comment. Cross-package objects never
 // appear here because their syntax isn't loaded, so their doc stays empty.
@@ -172,40 +116,35 @@ func funcDocComments(pkg *packages.Package) map[types.Object]string {
 // single FuncMap composite literal and merges it into byName (first definition
 // of a name wins).
 func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, docs map[types.Object]string, byName map[string]Function) {
-	for _, elt := range lit.Elts {
-		kv, ok := elt.(*ast.KeyValueExpr)
-		if !ok {
-			continue
-		}
-		key, ok := kv.Key.(*ast.BasicLit)
-		if !ok || key.Kind != token.STRING {
-			continue
-		}
-		name, err := strconv.Unquote(key.Value)
-		if err != nil {
-			continue
-		}
-		sig, obj := resolveSignature(kv.Value, pkg.TypesInfo)
-		if sig == nil {
-			continue
-		}
-		if _, exists := byName[name]; exists {
-			continue
-		}
-		fn := signatureToFunction(name, sig, pkg.Types)
-		if obj != nil {
-			fn.Doc = docs[obj]
-		}
-		byName[name] = fn
+	for _, e := range literalEntries(lit, pkg) {
+		indexFuncMapEntry(e.name, e.value, pkg, docs, byName)
 	}
 }
 
+// indexFuncMapEntry resolves one (name, value) pair to a function signature and
+// merges it into byName (first definition of a name wins).
+func indexFuncMapEntry(name string, value ast.Expr, pkg *packages.Package, docs map[types.Object]string, byName map[string]Function) {
+	sig, obj := resolveSignature(value, pkg.TypesInfo)
+	if sig == nil {
+		return
+	}
+	if _, exists := byName[name]; exists {
+		return
+	}
+	fn := signatureToFunction(name, sig, pkg.Types)
+	if obj != nil {
+		fn.Doc = docs[obj]
+	}
+	byName[name] = fn
+}
+
 // indexFuncsCall handles `t.Funcs(...)` / `t.Funcs(SomeVar)` calls on a
-// `*template.Template`, resolving each argument to a FuncMap literal (inline or
-// via a package-level variable) and indexing its entries. A known-library
-// constructor argument (e.g. `t.Funcs(sprig.FuncMap())`) marks its library as
-// detected so the bundled signature database can fill in the gaps later.
-func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[types.Object]*ast.CompositeLit, docs map[types.Object]string, byName map[string]Function, detected map[string]bool) {
+// `*template.Template`, resolving each argument to a FuncMap literal (inline),
+// a FuncMap variable (traced through the data-flow tracker), and indexing its
+// entries. A known-library constructor argument (e.g. `t.Funcs(sprig.FuncMap())`)
+// marks its library as detected so the bundled signature database can fill in
+// the gaps later.
+func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, flow *funcMapFlow, docs map[types.Object]string, byName map[string]Function, detected map[string]bool) {
 	if !isTemplateFuncsCall(call, pkg) {
 		return
 	}
@@ -220,8 +159,8 @@ func indexFuncsCall(call *ast.CallExpr, pkg *packages.Package, funcMapVars map[t
 			if obj == nil {
 				obj = pkg.TypesInfo.Defs[a]
 			}
-			if lit := funcMapVars[obj]; lit != nil {
-				indexFuncMapLiteral(lit, pkg, docs, byName)
+			for _, e := range flow.entries(obj) {
+				indexFuncMapEntry(e.name, e.value, pkg, docs, byName)
 			}
 		case *ast.CallExpr:
 			if lib := detectKnownLibrary(a, pkg); lib != nil {

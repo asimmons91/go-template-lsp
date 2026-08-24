@@ -41,19 +41,41 @@ export function resolvePackageName(documentUri: string): string {
 
 interface Scope {
   dotVar: string;
+  parent: Scope | null;
   vars: Map<string, string>;
-  declared: Set<string>;
 }
 
 function rootScope(): Scope {
-  return { dotVar: 'dot', vars: new Map(), declared: new Set() };
+  return { dotVar: 'dot', parent: null, vars: new Map() };
 }
 
 function childScope(parent: Scope, dotVar?: string): Scope {
-  return { dotVar: dotVar ?? parent.dotVar, vars: new Map(parent.vars), declared: new Set() };
+  return { dotVar: dotVar ?? parent.dotVar, parent, vars: new Map() };
 }
 
-const UNDEFINED_VAR = 'gotmplUndef';
+/**
+ * Looks up a `$name` binding across the lexical scope chain (closest scope
+ * first), returning the bound Go identifier or undefined when the variable was
+ * never declared.
+ */
+function lookupVar(scope: Scope, name: string): string | undefined {
+  for (let s: Scope | null = scope; s !== null; s = s.parent) {
+    const v = s.vars.get(name);
+    if (v !== undefined) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Go identifier emitted for a `$var` reference that is never bound. It is
+ * deliberately *not* declared, so gopls reports `undefined: gotmplUndef_<name>`
+ * and the diagnostic maps back onto the offending template variable instead of
+ * silently degrading to `interface{}`.
+ */
+function undefinedVarRef(name: string): string {
+  const bare = name.startsWith('$') ? name.slice(1) : name;
+  return `gotmplUndef_${bare.replace(/[^A-Za-z0-9_]/g, '_')}`;
+}
 
 export interface RewriteResult {
   go: string;
@@ -115,7 +137,7 @@ function rewriteValue(value: string, scope: Scope): RewriteValueResult {
     if (ch === '$') {
       const m = /^\$([A-Za-z_]\w*)/.exec(value.slice(i));
       if (m) {
-        go += scope.vars.get(m[0]) ?? UNDEFINED_VAR;
+        go += scope.vars.get(m[0]) ?? undefinedVarRef(m[0]);
         for (let k = 0; k < m[0].length; k++) charMap.push(go.length);
         prevSignificant = 'v';
         i += m[0].length;
@@ -288,14 +310,23 @@ function emitNodes(
       case 'var': {
         const { go, charMap } = rewritePipeline(node.pipeline, scope);
         const goVar = `v_${node.name.slice(1)}`;
-        const op = scope.declared.has(goVar) ? '=' : ':=';
-        if (op === ':=') scope.declared.add(goVar);
-        scope.vars.set(node.name, goVar);
-        push(`\t${goVar} ${op} `);
+        if (node.assign === 'define') {
+          scope.vars.set(node.name, goVar);
+          push(`\t${goVar} := `);
+        } else {
+          // Reassign to the existing binding, looking up the scope chain so a
+          // `$x = ...` inside a nested block targets the outer `v_x`. When the
+          // variable was never declared, emit an unresolved identifier so the
+          // resulting Go type error surfaces the mistake.
+          const bound = lookupVar(scope, node.name);
+          const target = bound ?? undefinedVarRef(node.name);
+          if (bound !== undefined) scope.vars.set(node.name, bound);
+          push(`\t${target} = `);
+        }
         const goStart = state.goLength;
         push(go);
         push('\n');
-        push(`\t_ = ${goVar}\n`);
+        push(`\t_ = ${scope.vars.get(node.name) ?? undefinedVarRef(node.name)}\n`);
         segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
         break;
       }
@@ -318,17 +349,23 @@ function emitNodes(
       case 'range': {
         const { go, charMap } = rewritePipeline(node.pipeline, scope);
         const itVar = `it${nextId()}`;
-        const indexVar = node.vars ? `i${nextId()}` : '_';
-        push(node.vars ? `\tfor ${indexVar}, ${itVar} := range ` : `\tfor _, ${itVar} := range `);
+        const vars = node.vars;
+        const hasIndex = vars !== undefined && vars.length === 2;
+        const indexVar = hasIndex ? `i${nextId()}` : '_';
+        push(hasIndex ? `\tfor ${indexVar}, ${itVar} := range ` : `\tfor _, ${itVar} := range `);
         const goStart = state.goLength;
         push(go);
         push(' {\n');
         segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
 
         const loopScope = childScope(scope, itVar);
-        if (node.vars) {
-          loopScope.vars.set(node.vars[0], indexVar);
-          loopScope.vars.set(node.vars[1], itVar);
+        if (vars) {
+          if (vars.length === 2) {
+            loopScope.vars.set(vars[0], indexVar);
+            loopScope.vars.set(vars[1], itVar);
+          } else {
+            loopScope.vars.set(vars[0], itVar);
+          }
         }
         emitNodes(parts, segments, node.body, loopScope, nextId, state);
         push('\t}\n');
@@ -460,11 +497,7 @@ export function transpileTemplate(
     .map((s) => (s.name ? `import ${s.name} "${s.path}"` : `import "${s.path}"`))
     .join('\n');
 
-  const parts: string[] = [
-    `package ${packageName}\n\n`,
-    `${importBlock}\n\n`,
-    `var ${UNDEFINED_VAR} interface{}\n\n`,
-  ];
+  const parts: string[] = [`package ${packageName}\n\n`, `${importBlock}\n\n`];
 
   if (funcMap && funcMap.size > 0) {
     for (const entry of funcMap.values()) {
@@ -474,12 +507,7 @@ export function transpileTemplate(
     parts.push('\n');
   }
 
-  parts.push(
-    `func gotmplRender() {\n`,
-    `\tvar dot gotmpl0.${gotype.typeName}\n`,
-    `\t_ = dot\n`,
-    `\t_ = ${UNDEFINED_VAR}\n`,
-  );
+  parts.push(`func gotmplRender() {\n`, `\tvar dot gotmpl0.${gotype.typeName}\n`, `\t_ = dot\n`);
   const segments: Segment[] = [];
   let id = 0;
 

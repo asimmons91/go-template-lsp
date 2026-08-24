@@ -181,7 +181,7 @@ func scanPackage(pkg *packages.Package) packageContrib {
 
 	byName := map[string]Function{}
 	detected := map[string]bool{}
-	funcMapVars := funcMapVarLiterals(pkg)
+	flow := newFuncMapFlow(pkg)
 	docs := funcDocComments(pkg)
 	ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
 	ix.collectEmbedVars()
@@ -194,11 +194,20 @@ func scanPackage(pkg *packages.Package) packageContrib {
 					indexFuncMapLiteral(node, pkg, docs, byName)
 				}
 			case *ast.CallExpr:
-				indexFuncsCall(node, pkg, funcMapVars, docs, byName, detected)
+				indexFuncsCall(node, pkg, flow, docs, byName, detected)
 			}
 			return true
 		})
 		ix.scan(file)
+	}
+
+	// Index `m["key"] = value` additions made to FuncMap variables that are
+	// never routed through a `.Funcs(...)` call in this package, mirroring the
+	// standalone composite-literal coverage above.
+	for _, entries := range flow.indexAssigns {
+		for _, e := range entries {
+			indexFuncMapEntry(e.name, e.value, pkg, docs, byName)
+		}
 	}
 
 	// Known-function-library signatures (e.g. Sprig) fill any names the

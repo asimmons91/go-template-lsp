@@ -147,9 +147,13 @@ mise run package      # build a .vsix
 ## Known limitations
 
 - FuncMap functions registered dynamically (e.g. built from a loop or returned
-  from a helper) are not found by static analysis.
-- `$var` tracking is partial: `{{ $x := .Field }}` works, but a `$var` bound to
-  another unresolved `$var` degrades to `interface{}`.
+  from a helper that can produce different FuncMaps) are not found by static
+  analysis. Simple local reassignment chains and post-hoc
+  `funcs["name"] = fn` index assignments are followed.
+- `$var` tracking covers declarations and reassignments across nested scopes
+  (including single-variable `range`). A reference to a variable that is never
+  bound surfaces as an "undefined" diagnostic instead of silently degrading to
+  `interface{}`.
 - Split-tag conditionals are unresolvable by static masking. An unclosed-tag
   diagnostic is suppressed only when the open tag is directly adjacent to a
   conditional arm (`{{if}}`/`{{range}}`/`{{else}}`) and a matching close follows

@@ -79,6 +79,14 @@ test('parses range with index and element variables', () => {
   assert.deepEqual(node.vars, ['$i', '$v']);
 });
 
+test('parses range with a single element variable', () => {
+  const node = single('{{range $v := .Items}}{{ $v }}{{end}}');
+  assert.equal(node.kind, 'range');
+  if (node.kind !== 'range') return;
+  assert.deepEqual(node.vars, ['$v']);
+  assert.equal(node.pipeline, '.Items');
+});
+
 test('parses with $var binding', () => {
   const node = single('{{with $x := .Address}}{{ $x }}{{end}}');
   assert.equal(node.kind, 'with');
