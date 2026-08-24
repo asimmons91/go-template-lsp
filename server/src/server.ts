@@ -18,6 +18,7 @@ import { isTemplateFileUri } from './templateNameService';
 import { normalizeExtraFuncs, ExtraFuncsEntry } from './indexer/funcMapIndex';
 import { formatDocument } from './formatting';
 import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from './semanticTokens';
+import { configureEmmet, EmmetSettings } from './modes/emmet';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -49,13 +50,19 @@ function validateTextDocument(textDocument: TextDocument): void {
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const options = params.initializationOptions as
-    | { goplsPath?: string; templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> }
+    | {
+        goplsPath?: string;
+        templateRoots?: string[];
+        extraFuncs?: Record<string, ExtraFuncsEntry>;
+        emmet?: EmmetSettings;
+      }
     | undefined;
   const goplsPath = options?.goplsPath ?? 'gopls';
   const roots = (params.workspaceFolders ?? []).map((folder) => folder.uri);
   if (roots.length === 0 && params.rootUri) roots.push(params.rootUri);
   const templateRoots = options?.templateRoots ?? [];
   const extraFuncs = normalizeExtraFuncs(options?.extraFuncs);
+  configureEmmet(options?.emmet);
   languageModes = getLanguageModes(goplsPath, roots, templateRoots, extraFuncs);
 
   return {
@@ -190,6 +197,15 @@ connection.onRequest(
   },
 );
 
+connection.onRequest(
+  'emmet/expandAbbreviation',
+  (params: { textDocument: { uri: string }; position: Position }) => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document || !languageModes) return null;
+    return languageModes.doEmmetExpand(document, params.position);
+  },
+);
+
 documents.onDidOpen((e) => {
   languageModes?.onDocumentOpened(e.document);
   validateTextDocument(e.document);
@@ -224,9 +240,11 @@ connection.onDidChangeWatchedFiles((params) => {
 connection.onDidChangeConfiguration((change) => {
   const settings = (change.settings ?? {}) as {
     goTemplate?: { templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> };
+    emmet?: EmmetSettings;
   };
   const templateRoots = settings.goTemplate?.templateRoots ?? [];
   const extraFuncs = normalizeExtraFuncs(settings.goTemplate?.extraFuncs);
+  configureEmmet(settings.emmet);
   languageModes?.reconfigure(templateRoots, extraFuncs);
 });
 

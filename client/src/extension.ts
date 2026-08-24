@@ -1,9 +1,9 @@
 import * as path from 'path';
 import {
   commands,
-  ConfigurationTarget,
   ExtensionContext,
   Position,
+  Range,
   SnippetString,
   TextEditor,
   window,
@@ -18,16 +18,29 @@ import {
 
 let client: LanguageClient;
 
-/**
- * Merges `{ gotmpl: "html" }` into an existing `emmet.includeLanguages` map,
- * preserving any other languages the user has already mapped. Extracted so the
- * merge logic is unit-testable without a VSCode runtime.
- */
-export function mergeIncludeLanguages(
-  current: Record<string, string> | undefined,
-  add: Record<string, string>,
-): Record<string, string> {
-  return { ...(current ?? {}), ...add };
+interface EmmetSettings {
+  showExpandedAbbreviation?: string;
+  showAbbreviationSuggestions?: boolean;
+  showSuggestionsAsSnippets?: boolean;
+  preferences?: Record<string, unknown>;
+  syntaxProfiles?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
+}
+
+/** Reads the `emmet.*` settings the server needs to shape completion/expansion. */
+function getEmmetSettings(): EmmetSettings {
+  const emmet = workspace.getConfiguration('emmet');
+  return {
+    showExpandedAbbreviation: emmet.get<string>(
+      'showExpandedAbbreviation',
+      'inMarkupAndStylesheetFilesOnly',
+    ),
+    showAbbreviationSuggestions: emmet.get<boolean>('showAbbreviationSuggestions', true),
+    showSuggestionsAsSnippets: emmet.get<boolean>('showSuggestionsAsSnippets', false),
+    preferences: emmet.get<Record<string, unknown>>('preferences', {}),
+    syntaxProfiles: emmet.get<Record<string, unknown>>('syntaxProfiles', {}),
+    variables: emmet.get<Record<string, unknown>>('variables', {}),
+  };
 }
 
 export function activate(context: ExtensionContext): void {
@@ -58,6 +71,7 @@ export function activate(context: ExtensionContext): void {
       extraFuncs: workspace
         .getConfiguration('goTemplate')
         .get<Record<string, unknown>>('extraFuncs', {}),
+      emmet: getEmmetSettings(),
     },
   };
 
@@ -70,7 +84,7 @@ export function activate(context: ExtensionContext): void {
 
   void client.start();
 
-  promptForEmmet(context);
+  wireEmmetExpand(context);
   wireTagComplete(context);
   wireEmmetContext(context);
   wireConfigurationSync(context);
@@ -148,15 +162,17 @@ function updateEmmetContext(editor: TextEditor | undefined): void {
 }
 
 /**
- * §2.9 — forwards `goTemplate.templateRoots` changes to the server so the
- * define/block index re-scans live instead of waiting for a reload.
+ * §2.9 — forwards `goTemplate.templateRoots`/`goTemplate.extraFuncs` and `emmet.*`
+ * changes to the server so the indexes and Emmet config re-apply live instead of
+ * waiting for a reload.
  */
 function wireConfigurationSync(context: ExtensionContext): void {
   context.subscriptions.push(
     workspace.onDidChangeConfiguration((e) => {
       if (
         !e.affectsConfiguration('goTemplate.templateRoots') &&
-        !e.affectsConfiguration('goTemplate.extraFuncs')
+        !e.affectsConfiguration('goTemplate.extraFuncs') &&
+        !e.affectsConfiguration('emmet')
       ) {
         return;
       }
@@ -170,6 +186,7 @@ function wireConfigurationSync(context: ExtensionContext): void {
               .getConfiguration('goTemplate')
               .get<Record<string, unknown>>('extraFuncs', {}),
           },
+          emmet: getEmmetSettings(),
         },
       });
     }),
@@ -177,10 +194,9 @@ function wireConfigurationSync(context: ExtensionContext): void {
 }
 
 /**
- * §4.4a — scope-aware Emmet disabling. Emmet is language-mode based, so the
- * TextMate scope can't stop it inside `{{ }}`. Instead we track the cursor and
- * publish a `gotmpl.inAction` context key that a keybinding (package.json) uses
- * to fall back to a plain Tab inside actions.
+ * §4.4a — scope-aware Emmet. Tracks the cursor and publishes a `gotmpl.inAction`
+ * context key, which the contributed `tab` keybindings (package.json) use to
+ * route Tab to `gotmpl.expandEmmet` outside actions and a plain tab inside them.
  */
 function wireEmmetContext(context: ExtensionContext): void {
   updateEmmetContext(window.activeTextEditor);
@@ -193,31 +209,43 @@ function wireEmmetContext(context: ExtensionContext): void {
 }
 
 /**
- * §4.4a — Emmet activation. The `configurationDefaults` in package.json covers
- * users who have never touched `emmet.includeLanguages`; this one-time prompt
- * covers the rest (a user who already has their own mapping) by merging
- * `gotmpl` into it explicitly.
+ * §4.4a — scope-aware Emmet expansion. The `gotmpl.inAction` context key gates a
+ * `tab` → `gotmpl.expandEmmet` keybinding (package.json) so that Tab inside a
+ * `{{ }}` action falls through to a plain tab, while outside an action it asks
+ * the server to expand the abbreviation at the cursor.
  */
-function promptForEmmet(context: ExtensionContext): void {
-  const stateKey = 'goTemplate.emmetPrompted';
-  if (context.globalState.get<boolean>(stateKey, false)) return;
+function wireEmmetExpand(context: ExtensionContext): void {
+  context.subscriptions.push(
+    commands.registerCommand('gotmpl.expandEmmet', async () => {
+      const editor = window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'gotmpl') {
+        return commands.executeCommand('tab');
+      }
 
-  const emmetConfig = workspace.getConfiguration('emmet');
-  const include = emmetConfig.get<Record<string, string>>('includeLanguages');
-  if (include && include.gotmpl) return;
+      const doc = editor.document;
+      const position = editor.selection.active;
+      const result = await client.sendRequest<{
+        range: {
+          start: { line: number; character: number };
+          end: { line: number; character: number };
+        };
+        snippet: string;
+      } | null>('emmet/expandAbbreviation', {
+        textDocument: { uri: doc.uri.toString() },
+        position,
+      });
 
-  void context.globalState.update(stateKey, true);
+      if (!result) return commands.executeCommand('tab');
 
-  void window
-    .showInformationMessage('Enable Emmet for Go Template files?', 'Enable', 'Not now')
-    .then((choice) => {
-      if (choice !== 'Enable') return;
-      void emmetConfig.update(
-        'includeLanguages',
-        mergeIncludeLanguages(include, { gotmpl: 'html' }),
-        ConfigurationTarget.Global,
+      const range = new Range(
+        result.range.start.line,
+        result.range.start.character,
+        result.range.end.line,
+        result.range.end.character,
       );
-    });
+      return editor.insertSnippet(new SnippetString(result.snippet), range);
+    }),
+  );
 }
 
 /**

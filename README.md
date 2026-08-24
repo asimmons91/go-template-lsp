@@ -105,19 +105,14 @@ To call out unresolved fields explicitly, add to your settings:
 }
 ```
 
-## Enabling Emmet
+## Emmet
 
-Emmet expansion for `.gotmpl` files requires the `emmet.includeLanguages`
-setting. The extension ships a default mapping and prompts once to enable it. To
-enable manually, add to your settings:
-
-```jsonc
-{
-  "emmet.includeLanguages": {
-    "gotmpl": "html",
-  },
-}
-```
+Emmet is built in. Abbreviation expansion (Tab) and abbreviation suggestions
+work in the HTML body and inside `<style>` blocks, and are disabled inside
+`{{ }}` actions — those are Go, not HTML/CSS. Output respects the usual `emmet.*`
+settings (`emmet.preferences`, `emmet.syntaxProfiles`, `emmet.variables`,
+`emmet.showAbbreviationSuggestions`, `emmet.showExpandedAbbreviation`, and
+`emmet.showSuggestionsAsSnippets`).
 
 ## Building
 

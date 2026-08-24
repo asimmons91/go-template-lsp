@@ -122,10 +122,9 @@ should not stop at the boundary of the comment.
 
 ### 4.4a Emmet abbreviation expansion
 
-Unlike every other requirement in this document, this one is **not served by
-the language server at all** — VSCode's Emmet support is a built-in client
-feature that reads the document's TextMate scopes directly, so this is really
-a packaging/configuration requirement rather than a completion provider.
+Emmet is served by the language server via `@vscode/emmet-helper`, so it is
+region-aware: the server already routes each offset to `html`, `css`, or
+`gotemplate` (§5.3), and Emmet is only consulted for the `html`/`css` regions.
 
 - **Input:** the user typing an Emmet abbreviation (e.g. `ul>li*3`,
   `div.card>h2+p`) outside a `{{ }}` action and pressing Tab.
@@ -135,26 +134,24 @@ a packaging/configuration requirement rather than a completion provider.
   anything while the cursor is inside a `{{ }}` action — that text isn't HTML
   or CSS and shouldn't be treated as such.
 - **Mechanism:**
-  - VSCode's Emmet engine only activates on a document's language ID if that
-    ID is one of its built-in defaults (`html`, `css`, etc.) or is mapped via
-    the `emmet.includeLanguages` setting — an extension cannot silently
-    change a user's global settings, so the extension should prompt once on
-    first activation ("Enable Emmet for Go Template files?") offering to
-    write `"emmet.includeLanguages": { "gotmpl": "html" }` into the user's or
-    workspace's settings, and document the manual step in the README for
-    anyone who declines the prompt.
-  - Correct behavior inside vs. outside `{{ }}` does **not** come from the
-    TextMate grammar: Emmet is language-mode based (`emmet.includeLanguages`
-    maps `gotmpl` → `html`, so the whole file is treated as HTML), not
-    scope-based — the `meta.embedded.block.gohtml` scope does nothing to stop
-    Emmet. Instead the client tracks the cursor and publishes a
-    `gotmpl.inAction` context key, and a contributed keybinding (`tab` →
-    plain `tab` when `gotmpl.inAction`) makes Tab fall through to a normal
-    tab inside an action while leaving Emmet expansion intact outside. Emmet
-    _abbreviation suggestions_ have no per-position or per-language opt-out,
-    so they are disabled globally via `emmet.showAbbreviationSuggestions:
-false` (an accepted asymmetry; the LSP's own HTML tag/attribute
-    completion still covers the non-`{{ }}` regions).
+  - VSCode's built-in Emmet engine is language-mode based, not scope-based: if
+    `gotmpl` were mapped via `emmet.includeLanguages` it would fire across the
+    whole file — including inside `{{ }}` — and its suggestions have no
+    per-position opt-out. So the extension does **not** use the built-in
+    engine for `.gotmpl`; instead the server merges Emmet completions into the
+    HTML and CSS modes (`@vscode/emmet-helper`'s `doComplete`) and exposes
+    expansion through a custom `emmet/expandAbbreviation` request.
+  - Because those modes are only reached when the offset resolves to an
+    `html`/`css` region, Emmet structurally cannot fire inside `{{ }}`.
+    Expansion (Tab) is driven by a client keybinding that sends
+    `emmet/expandAbbreviation`; the server returns `null` inside an action so
+    Tab falls back to a plain tab. The client also publishes a
+    `gotmpl.inAction` context key to short-circuit inside actions without a
+    round-trip.
+  - Relevant `emmet.*` settings (`showAbbreviationSuggestions`,
+    `showExpandedAbbreviation`, `showSuggestionsAsSnippets`, `preferences`,
+    `syntaxProfiles`, `variables`) are forwarded from the client to the server
+    on init and on configuration change.
 
 ### 4.4b HTML tag auto-closing
 
@@ -188,10 +185,8 @@ server-side code, not just configuration.
     calling `doTagComplete` against the masked HTML document, returning
     `null` when the position resolves inside a `{{ }}` action so the client
     doesn't insert anything spurious.
-  - This is a good concrete illustration of the distinction drawn in §5.2a:
-    Emmet needed zero server involvement, but this feature — despite feeling
-    similarly "free" since VSCode already does it for plain HTML — actually
-    does require both sides of the client/server boundary to cooperate.
+  - Like Emmet (§4.4a), this requires both sides of the client/server boundary
+    to cooperate, using the same masked-document and region routing.
 
 ### 4.5 Embedded CSS completion
 
@@ -256,15 +251,13 @@ delegate           delegate        delegate        delegate
   out to `go list`/`go/packages` via a small Go helper binary) or as its own
   child process; not yet decided, see §11.
 
-### 5.2a Emmet is outside this pipeline entirely
+### 5.2a Emmet now flows through the pipeline
 
-Worth flagging explicitly since every other feature in this document flows
-through the server: Emmet (§4.4a) is resolved entirely inside the VSCode
-client from the TextMate grammar's scopes, with no request ever reaching the
-language server. The masking/region-splitting pipeline below exists to serve
-the _language server's_ delegates; Emmet's HTML/CSS context detection is a
-separate, editor-native mechanism that happens to work correctly for free as
-long as the grammar's scope assignments (§4.4a) are accurate.
+Emmet (§4.4a) was originally resolved entirely inside the VSCode client from
+the TextMate grammar's scopes, but VSCode's built-in Emmet is language-mode
+based and cannot be scoped to exclude `{{ }}`. It is now served by the
+language server via `@vscode/emmet-helper` and rides the same masking/region
+routing as the other delegates, so it only ever sees the `html`/`css` regions.
 
 ### 5.3 Masking strategy (see §8 for the known limitation)
 
@@ -354,13 +347,13 @@ be written.)
   different escaping). Worth a v2 design doc of its own if pursued, since it
   requires re-implementing parts of `html/template`'s unexported `escape.go`
   logic.
-- **Emmet activation depends on a setting we can only request, not force.**
-  Users who dismiss the activation-time prompt (§4.4a) and never manually add
-  `emmet.includeLanguages` will simply get no Emmet support, with no further
-  in-editor signal that anything is missing. Consider re-surfacing the prompt
-  (at most once more) if we detect the user typing an unexpanded abbreviation
-  pattern, though that detection itself risks being noisy or wrong often
-  enough that it may not be worth building.
+- **Emmet is server-owned, so it cannot be silently disabled the way a config
+  flag could.** Because Emmet no longer depends on `emmet.includeLanguages`
+  (§4.4a), the server always provides it for the `html`/`css` regions. If a
+  user has strong `emmet.*` preferences or a global `emmet.excludeLanguages`
+  intent, those are only partially honored today (only the settings listed in
+  §4.4a are forwarded). A future pass could honor `emmet.excludeLanguages` and
+  `emmet.extensionsPath` for full parity with VSCode's built-in Emmet.
 
 ## 9. Milestones
 
@@ -370,9 +363,8 @@ be written.)
 2. **M2 — HTML/CSS/JS delegation.** Masking pass + region splitter working;
    HTML/CSS/JS completion functional on a test fixture with no Go actions at all
    (validates the embedding pipeline independent of the Go side). Verify Emmet
-   abbreviation expansion (§4.4a) against the same fixtures once
-   `emmet.includeLanguages` is configured — this needs no server-side work,
-   just confirmation that the grammar's scopes produce correct behavior. Wire
+   abbreviation expansion (§4.4a) against the same fixtures — the server
+   serves it via `@vscode/emmet-helper` and the same region routing. Wire
    up the custom `html/tag` request (§4.4b) for auto-closing tags on both the
    client and `htmlMode.ts` in this milestone too, since it reuses the same
    `vscode-html-languageservice` instance already being stood up here.
@@ -406,10 +398,9 @@ be written.)
   workspace-scan cost for v2, or should the comment stay mandatory?
 - ~~Should the `emmet.includeLanguages` mapping (§4.4a) be written via
   `contributes.configurationDefaults` in `package.json` instead of an
-  activation-time prompt?~~ _Resolved:_ both are shipped — the extension sets
-  `contributes.configurationDefaults` for users who have never touched the
-  setting, and also prompts once to merge `gotmpl` into any pre-existing
-  user mapping (see `client/src/extension.ts`).
+  activation-time prompt?~~ _Resolved:_ neither — Emmet is served by the
+  language server via `@vscode/emmet-helper`, so no `emmet.includeLanguages`
+  mapping (or prompt) is needed at all (see `server/src/modes/emmet.ts`).
 - §4.4b covers auto-_inserting_ a closing tag when one is first typed. A
   related but distinct feature — editing `<p>` to `<div>` and having the
   existing `</p>` update live to `</div>` — is VSCode's separate "linked

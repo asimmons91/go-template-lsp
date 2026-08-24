@@ -1,8 +1,9 @@
 import { getLanguageService } from 'vscode-html-languageservice';
-import { Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
+import { CompletionList, Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { ActionSpan, classify, scanActions } from '../templateParser';
+import { getEmmetCompletion } from './emmet';
 
 const htmlLanguageService = getLanguageService();
 
@@ -135,7 +136,13 @@ export function getHTMLMode(): LanguageMode {
     getId: () => 'html',
     doComplete(_document, position, regions) {
       const htmlDocument = htmlLanguageService.parseHTMLDocument(regions.maskedDocument);
-      return htmlLanguageService.doComplete(regions.maskedDocument, position, htmlDocument);
+      const result = htmlLanguageService.doComplete(regions.maskedDocument, position, htmlDocument);
+      const emmet = getEmmetCompletion(regions.maskedDocument, position, 'html');
+      if (!emmet) return result;
+      return CompletionList.create(
+        [...result.items, ...emmet.items],
+        result.isIncomplete || emmet.isIncomplete,
+      );
     },
     doDiagnostics(document, regions) {
       return getHTMLDiagnostics(document.getText(), regions.maskedDocument);
