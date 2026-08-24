@@ -1,13 +1,15 @@
-import { CompletionItem, CompletionItemKind, CompletionList, Position } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, CompletionList, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
 import { parseGotypeComment } from '../gotype';
 import { parseTemplate, findPipelineAtOffset } from '../templateParser';
+import { scanTemplateDirectives } from '../templateDirectives';
 import { parsePipeline } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
 import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../funcmap/funcMapIndex';
+import { TemplateNameService } from '../templateNameService';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
   dispose(): void;
@@ -16,7 +18,8 @@ export interface GoTemplateLanguageMode extends LanguageMode {
 export function getGoTemplateMode(
   goplsPath: string,
   rootUri: string | undefined,
-  funcMapIndexer: FuncMapIndexer
+  funcMapIndexer: FuncMapIndexer,
+  templateNames: TemplateNameService
 ): GoTemplateLanguageMode {
   const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
 
@@ -29,6 +32,17 @@ export function getGoTemplateMode(
 
       const span = regions.actionSpans.find((s) => s.start <= offset && offset <= s.end);
       if (!span) return CompletionList.create([], false);
+
+      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      if (directive && directive.keyword === 'template') {
+        await templateNames.ensureReady();
+        const prefix = text.slice(directive.nameStart, offset);
+        const items: CompletionItem[] = templateNames
+          .getAllNames()
+          .filter((n) => n.startsWith(prefix))
+          .map((n) => ({ label: n, kind: CompletionItemKind.Module, sortText: `0${n}` }));
+        return CompletionList.create(items, true);
+      }
 
       const gotype = parseGotypeComment(text);
       if (!gotype) return CompletionList.create([], false);
@@ -52,6 +66,30 @@ export function getGoTemplateMode(
 
       await client.openOrUpdate(uri, goSource);
       return client.completion(uri, goOffset);
+    },
+
+    async doDefinition(document: TextDocument, position: Position): Promise<Location[] | undefined> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      if (!directive) return undefined;
+      await templateNames.ensureReady();
+      return templateNames.getDefinitions(directive.name);
+    },
+
+    async doReferences(
+      document: TextDocument,
+      position: Position,
+      _regions: GoTemplateDocument,
+      context: ReferenceContext
+    ): Promise<Location[] | undefined> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      if (!directive) return undefined;
+      await templateNames.ensureReady();
+      const refs = templateNames.getReferences(directive.name);
+      return context.includeDeclaration ? refs.concat(templateNames.getDefinitions(directive.name)) : refs;
     },
 
     dispose() {
