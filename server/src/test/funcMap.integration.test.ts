@@ -30,20 +30,25 @@ async function completeAt(token: string): Promise<CompletionList> {
 }
 
 test('indexes FuncMap entries with signatures from the fixture', async () => {
-  const indexer = getFuncMapIndexer(getGoIndexRunner(`file://${fixtureRoot}`));
-  const index = await indexer.getIndex();
+  const runner = getGoIndexRunner(`file://${fixtureRoot}`);
+  try {
+    const indexer = getFuncMapIndexer(runner);
+    const index = await indexer.getIndex();
 
-  const upper = index.get('upper');
-  assert.ok(upper, 'expected upper in index');
-  assert.deepEqual(
-    upper.params.map((p) => p.type),
-    ['string'],
-  );
-  assert.deepEqual(upper.results, ['string']);
+    const upper = index.get('upper');
+    assert.ok(upper, 'expected upper in index');
+    assert.deepEqual(
+      upper.params.map((p) => p.type),
+      ['string'],
+    );
+    assert.deepEqual(upper.results, ['string']);
 
-  const asUser = index.get('asUser');
-  assert.ok(asUser, 'expected asUser in index');
-  assert.equal(asUser.params[0].type, 'model.User');
+    const asUser = index.get('asUser');
+    assert.ok(asUser, 'expected asUser in index');
+    assert.equal(asUser.params[0].type, 'model.User');
+  } finally {
+    runner.dispose();
+  }
 });
 
 test('completes a registered function name with its signature', async () => {

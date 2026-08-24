@@ -25,6 +25,8 @@ function fakeClient(completions: CompletionItem[][]): GoplsClient {
     rename: () => Promise.resolve(undefined),
     diagnostics: () => Promise.resolve([]),
     health: () => Promise.resolve(true),
+    restart: () => Promise.resolve(),
+    getChild: () => undefined,
     dispose: () => {},
   };
   return client;

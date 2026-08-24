@@ -21,7 +21,7 @@ import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
 import { getGoTemplateMode } from './modes/goTemplateMode';
-import { getFuncMapIndexer } from './indexer/funcMapIndex';
+import { getFuncMapIndexer, FuncMapEntry } from './indexer/funcMapIndex';
 import { getGoIndexRunner } from './goIndex';
 import { getExecuteSiteIndex } from './inference/executeSiteIndex';
 import { TemplateNameService } from './templateNameService';
@@ -97,9 +97,9 @@ export interface LanguageModes {
   onDocumentChanged(document: TextDocument): void;
   onDocumentClosed(document: TextDocument): void;
   onTemplateFileEvent(uri: string, type: number): void;
-  invalidateFuncMap(): void;
-  /** Re-scans the template index with a new set of template-root patterns. */
-  reconfigure(templateRoots: string[]): void;
+  invalidateFuncMap(files?: string[]): void;
+  /** Re-scans the template index with new template-root patterns and replaces the extra-funcs layer. */
+  reconfigure(templateRoots: string[], extraFuncs: FuncMapEntry[]): void;
   dispose(): void;
 }
 
@@ -107,6 +107,7 @@ export function getLanguageModes(
   goplsPath: string,
   roots: string | string[] | undefined,
   templateRoots?: string[],
+  extraFuncs: FuncMapEntry[] = [],
 ): LanguageModes {
   const rootList = normalizeRoots(roots);
   const workspaceFolders = rootList.map((uri) => ({ uri, name: uri }));
@@ -116,6 +117,7 @@ export function getLanguageModes(
   const jsMode = getJSMode(rootList);
   const goIndexRunner = getGoIndexRunner(rootList);
   const funcMapIndexer = getFuncMapIndexer(goIndexRunner);
+  funcMapIndexer.setExtraFuncs(extraFuncs);
   const templateNames = new TemplateNameService(rootList, templateRoots);
   const executeSiteIndex = getExecuteSiteIndex(goIndexRunner, templateNames);
   const goTemplateMode = getGoTemplateMode(
@@ -172,16 +174,18 @@ export function getLanguageModes(
     onTemplateFileEvent(uri, type) {
       templateNames.onFileEvent(uri, type);
     },
-    invalidateFuncMap() {
-      goIndexRunner.invalidate();
+    invalidateFuncMap(files?: string[]) {
+      goIndexRunner.invalidate(files);
     },
-    reconfigure(templateRoots) {
+    reconfigure(templateRoots, extraFuncs) {
       templateNames.rescan(templateRoots);
+      funcMapIndexer.setExtraFuncs(extraFuncs);
       goIndexRunner.invalidate();
     },
     dispose() {
       jsMode.dispose();
       goTemplateMode.dispose();
+      goIndexRunner.dispose();
     },
   };
 }

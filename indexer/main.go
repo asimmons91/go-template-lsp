@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"go/types"
 	"os"
-	"sort"
 	"strconv"
 
 	"golang.org/x/tools/go/packages"
@@ -38,8 +37,16 @@ type Result struct {
 
 func main() {
 	dir := "."
-	if len(os.Args) > 1 {
-		dir = os.Args[1]
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "serve" {
+		if len(args) > 1 {
+			dir = args[1]
+		}
+		runDaemon(dir)
+		return
+	}
+	if len(args) > 0 {
+		dir = args[0]
 	}
 	result := scan(dir)
 	enc := json.NewEncoder(os.Stdout)
@@ -57,54 +64,16 @@ func main() {
 // call on a `*template.Template`.
 func scan(dir string) Result {
 	result := Result{Functions: []Function{}, ExecuteSites: []ExecuteSite{}, Errors: []string{}}
-	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports |
-			packages.NeedDeps,
-		Dir: dir,
-	}
-	pkgs, err := packages.Load(cfg, "./...")
+	pkgs, err := packages.Load(daemonConfig(dir), "./...")
 	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 		return result
 	}
 
-	byName := map[string]Function{}
-	sites := []ExecuteSite{}
-	for _, pkg := range pkgs {
-		if pkg.Types == nil || pkg.TypesInfo == nil {
-			continue
-		}
-		funcMapVars := funcMapVarLiterals(pkg)
-		docs := funcDocComments(pkg)
-		ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
-		ix.collectEmbedVars()
-		for _, file := range pkg.Syntax {
-			ast.Inspect(file, func(n ast.Node) bool {
-				switch node := n.(type) {
-				case *ast.CompositeLit:
-					if t := pkg.TypesInfo.TypeOf(node); t != nil && isFuncMapType(t) {
-						indexFuncMapLiteral(node, pkg, docs, byName)
-					}
-				case *ast.CallExpr:
-					indexFuncsCall(node, pkg, funcMapVars, docs, byName)
-				}
-				return true
-			})
-			ix.scan(file)
-		}
-		sites = append(sites, ix.sites...)
-	}
-	result.ExecuteSites = dedupeExecuteSites(sites)
-
-	names := make([]string, 0, len(byName))
-	for name := range byName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		result.Functions = append(result.Functions, byName[name])
-	}
+	contribs, order := indexAll(pkgs)
+	merged := mergeContribs(order, contribs)
+	result.Functions = merged.Functions
+	result.ExecuteSites = merged.ExecuteSites
 	return result
 }
 

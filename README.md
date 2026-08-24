@@ -56,6 +56,33 @@ disambiguate.
   define/block index. Empty (the default) scans every workspace folder. For
   example, `["templates/**", "views/**"]` skips unrelated `.html`/`.gotmpl`
   files elsewhere in a large repo.
+- `goTemplate.extraFuncs` — manual fallback for template functions static
+  analysis cannot find (built dynamically, returned from a helper, etc.). Maps a
+  function name to its signature:
+
+  ```jsonc
+  {
+    "goTemplate.extraFuncs": {
+      "slugify": {
+        "params": ["string"],
+        "results": ["string"],
+        "doc": "lower-cases and joins with hyphens.",
+      },
+      "asUser": {
+        "params": ["model.User"],
+        "results": [],
+        "imports": { "model": "example.com/x/model" },
+      },
+    },
+  }
+  ```
+
+  `params` entries are either a bare type string (`"string"`, `"[]int"`,
+  `"model.User"`) or `{ "name", "type" }`; `results` is an array of type
+  strings; `variadic` marks the last parameter as variadic; `imports` maps a
+  package qualifier to its import path for package-qualified types; `doc` is
+  shown on hover. Scanned workspace functions always win over `extraFuncs` on a
+  name collision.
 
 ## Enabling Emmet
 
@@ -85,9 +112,11 @@ mise run package      # build a .vsix
   from a helper) are not found by static analysis.
 - `$var` tracking is partial: `{{ $x := .Field }}` works, but a `$var` bound to
   another unresolved `$var` degrades to `interface{}`.
-- Split-tag conditionals (`{{if .X}}<div>{{end}}...{{if .X}}</div>{{end}}`) are
-  unresolvable by static masking; unclosed-tag diagnostics for such tags are
-  suppressed.
+- Split-tag conditionals are unresolvable by static masking. An unclosed-tag
+  diagnostic is suppressed only when the open tag is directly adjacent to a
+  conditional arm (`{{if}}`/`{{range}}`/`{{else}}`) and a matching close follows
+  the block's `{{end}}` (the duplicated-open/shared-close shape). Other
+  genuinely broken markup is still flagged.
 - Execute-site type inference is best-effort: it only traces template
   construction within a single package (`ParseFiles`/`ParseGlob`/`Must`/`New`
   chains), requires the data argument to be a named struct (or pointer to one),

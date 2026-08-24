@@ -60,6 +60,55 @@
           },
           "default": [],
           "description": "Glob patterns (relative to each workspace folder) limiting which directories are scanned for template files by the define/block index. Empty means scan every workspace folder."
+        },
+        "goTemplate.extraFuncs": {
+          "type": "object",
+          "default": {},
+          "description": "Extra template function signatures to register when static analysis cannot find them (e.g. functions built dynamically). Maps a function name to { params, results, variadic, imports, doc }.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "params": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "variadic": {
+                "type": "boolean"
+              },
+              "imports": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "doc": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

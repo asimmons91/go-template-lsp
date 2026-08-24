@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -191,7 +191,14 @@ export const BUILTINS: FuncMapEntry[] = [
 
 export interface GoIndexRunner {
   getIndex(): Promise<GoIndexResult>;
-  invalidate(): void;
+  /** Marks the index stale. Pass changed `.go` file URIs for an incremental re-index, or nothing for a full re-scan. */
+  invalidate(files?: string[]): void;
+  dispose(): void;
+}
+
+/** Test-facing view of a runner: exposes how many full vs incremental scans ran. */
+export interface TestableGoIndexRunner extends GoIndexRunner {
+  _scanCounts(): Array<{ index: number; reindex: number }>;
 }
 
 // Resolved relative to the compiled server output (server/out), the Go indexer
@@ -254,51 +261,156 @@ function parseIndex(stdout: string): GoIndexResult {
   return empty;
 }
 
-/**
- * Lazily runs the companion Go workspace indexer on demand — the pre-built
- * binary for the current platform when available, falling back to
- * `go run . <workspaceDir>` in development — and caches the combined
- * FuncMap + execute-site result. Any spawn or parse failure resolves to an empty
- * result so a missing/broken Go toolchain degrades gracefully. Shared by the
- * FuncMap and execute-site inference services so the workspace is scanned once.
- */
-export function getGoIndexRunner(roots: string | string[] | undefined): GoIndexRunner {
-  let cache: GoIndexResult | undefined;
-  let pending: Promise<GoIndexResult> | undefined;
+/** How long to coalesce a burst of `.go` change events before re-indexing. */
+const REINDEX_DEBOUNCE_MS = 150;
 
+/**
+ * A single long-running indexer child process (one per workspace root), spoken
+ * to over newline-delimited JSON. It keeps `go/packages` warm and answers an
+ * `index` (full scan) or a `reindex` (package-scoped rescan of the changed
+ * files) with the full merged index, so a single-file change never re-scans the
+ * whole workspace.
+ */
+class IndexDaemon {
+  private child: ChildProcessWithoutNullStreams | undefined;
+  private buffer = '';
+  private pending: Array<{ resolve: (r: GoIndexResult) => void }> = [];
+  private cache: GoIndexResult | undefined;
+  private inflight: Promise<GoIndexResult> | undefined;
+  private pendingFiles: string[] = [];
+  private debounce: NodeJS.Timeout | undefined;
+  private counts = { index: 0, reindex: 0 };
+
+  constructor(readonly workspaceDir: string) {}
+
+  private spawnChild(): void {
+    const binary = prebuiltBinary();
+    const child = binary
+      ? spawn(binary, ['serve', this.workspaceDir], { stdio: ['pipe', 'pipe', 'pipe'] })
+      : spawn('go', ['run', '.', 'serve', this.workspaceDir], {
+          cwd: INDEXER_DIR,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+    this.child = child;
+    child.stdout.on('data', (d: Buffer) => this.onData(d.toString()));
+    child.stderr.on('data', () => undefined);
+    // Swallow stream errors so a child that dies mid-write can't crash the server.
+    child.stdin.on('error', () => undefined);
+    child.stdout.on('error', () => undefined);
+    child.on('error', () => this.onExit());
+    child.on('exit', () => this.onExit());
+  }
+
+  private onData(chunk: string): void {
+    this.buffer += chunk;
+    let idx: number;
+    while ((idx = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, idx);
+      this.buffer = this.buffer.slice(idx + 1);
+      if (!line.trim()) continue;
+      const result = parseIndex(line);
+      this.cache = result;
+      const waiter = this.pending.shift();
+      if (waiter) waiter.resolve(result);
+    }
+  }
+
+  private onExit(): void {
+    this.child = undefined;
+    this.cache = undefined;
+    const waiters = this.pending;
+    this.pending = [];
+    for (const w of waiters) w.resolve({ functions: [], executeSites: [] });
+  }
+
+  private send(cmd: object): Promise<GoIndexResult> {
+    if (!this.child) this.spawnChild();
+    const child = this.child;
+    if (!child) return Promise.resolve({ functions: [], executeSites: [] });
+
+    return new Promise<GoIndexResult>((resolve) => {
+      this.pending.push({ resolve });
+      child.stdin.write(`${JSON.stringify(cmd)}\n`);
+    });
+  }
+
+  private track(p: Promise<GoIndexResult>): Promise<GoIndexResult> {
+    const tracked = p.finally(() => {
+      if (this.inflight === tracked) this.inflight = undefined;
+    });
+    this.inflight = tracked;
+    return tracked;
+  }
+
+  getIndex(): Promise<GoIndexResult> {
+    if (this.debounce) this.flush();
+    if (this.inflight) return this.inflight;
+    if (this.cache) return Promise.resolve(this.cache);
+    this.counts.index++;
+    return this.track(this.send({ op: 'index' }));
+  }
+
+  invalidate(files: string[]): void {
+    if (files.length === 0) {
+      this.cache = undefined;
+      this.counts.index++;
+      void this.track(this.send({ op: 'index' }));
+      return;
+    }
+    for (const f of files) this.pendingFiles.push(f);
+    if (this.debounce) clearTimeout(this.debounce);
+    this.debounce = setTimeout(() => this.flush(), REINDEX_DEBOUNCE_MS);
+  }
+
+  private flush(): void {
+    if (this.debounce) {
+      clearTimeout(this.debounce);
+      this.debounce = undefined;
+    }
+    const files = this.pendingFiles;
+    this.pendingFiles = [];
+    if (files.length === 0) return;
+    if (!this.cache) {
+      // No baseline yet; a full scan is required before we can splice deltas.
+      this.counts.index++;
+      void this.track(this.send({ op: 'index' }));
+      return;
+    }
+    this.counts.reindex++;
+    void this.track(this.send({ op: 'reindex', files }));
+  }
+
+  getScanCounts(): { index: number; reindex: number } {
+    return { ...this.counts };
+  }
+
+  dispose(): void {
+    if (this.debounce) clearTimeout(this.debounce);
+    this.debounce = undefined;
+    this.pendingFiles = [];
+    const child = this.child;
+    this.child = undefined;
+    if (child) {
+      try {
+        child.kill();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+/**
+ * Manages one warm indexer daemon per workspace root, merging their results
+ * into a single workspace-wide FuncMap + execute-site index. `invalidate(files)`
+ * routes changed `.go` files to the owning root's daemon for an incremental
+ * re-index; a file-less `invalidate()` forces a full re-scan everywhere.
+ */
+export function getGoIndexRunner(roots: string | string[] | undefined): TestableGoIndexRunner {
   const rootList = (Array.isArray(roots) ? roots : roots ? [roots] : []).filter(
     (r) => typeof r === 'string' && r.length > 0,
   );
-
-  function runOne(workspaceDir: string): Promise<GoIndexResult> {
-    return new Promise((resolve) => {
-      const binary = prebuiltBinary();
-      const child = binary
-        ? spawn(binary, [workspaceDir], { stdio: ['ignore', 'pipe', 'pipe'] })
-        : spawn('go', ['run', '.', workspaceDir], {
-            cwd: INDEXER_DIR,
-            stdio: ['ignore', 'pipe', 'pipe'],
-          });
-
-      let stdout = '';
-      child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-      child.stderr.on('data', () => undefined);
-
-      const timer = setTimeout(() => {
-        child.kill();
-        resolve({ functions: [], executeSites: [] });
-      }, 60000);
-
-      child.on('error', () => {
-        clearTimeout(timer);
-        resolve({ functions: [], executeSites: [] });
-      });
-      child.on('close', () => {
-        clearTimeout(timer);
-        resolve(parseIndex(stdout));
-      });
-    });
-  }
+  const daemons = rootList.map((uri) => new IndexDaemon(uriToPath(uri)));
 
   /**
    * Merges per-folder index runs into one workspace-wide result. FuncMap entries
@@ -329,24 +441,30 @@ export function getGoIndexRunner(roots: string | string[] | undefined): GoIndexR
     return { functions: [...functions.values()], executeSites };
   }
 
-  function build(): Promise<GoIndexResult> {
-    if (rootList.length === 0) return Promise.resolve({ functions: [], executeSites: [] });
-    const dirs = rootList.map(uriToPath);
-    return Promise.all(dirs.map(runOne)).then(merge);
-  }
-
   return {
     async getIndex() {
-      if (cache) return cache;
-      if (!pending) pending = build();
-      const result = await pending;
-      cache = result;
-      pending = undefined;
-      return result;
+      if (rootList.length === 0) return { functions: [], executeSites: [] };
+      const results = await Promise.all(daemons.map((d) => d.getIndex()));
+      return merge(results);
     },
-    invalidate() {
-      cache = undefined;
-      pending = undefined;
+    invalidate(files?: string[]) {
+      const changed = (files ?? []).map(uriToPath).filter((p) => p.length > 0);
+      if (changed.length === 0) {
+        for (const d of daemons) d.invalidate([]);
+        return;
+      }
+      for (const d of daemons) {
+        const owned = changed.filter(
+          (p) => p === d.workspaceDir || p.startsWith(`${d.workspaceDir}${path.sep}`),
+        );
+        if (owned.length > 0) d.invalidate(owned);
+      }
+    },
+    dispose() {
+      for (const d of daemons) d.dispose();
+    },
+    _scanCounts() {
+      return daemons.map((d) => d.getScanCounts());
     },
   };
 }

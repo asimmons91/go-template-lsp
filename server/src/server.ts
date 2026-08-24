@@ -14,6 +14,7 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
 import { isTemplateFileUri } from './templateNameService';
+import { normalizeExtraFuncs, ExtraFuncsEntry } from './indexer/funcMapIndex';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -45,12 +46,14 @@ function validateTextDocument(textDocument: TextDocument): void {
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const options = params.initializationOptions as
-    { goplsPath?: string; templateRoots?: string[] } | undefined;
+    | { goplsPath?: string; templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> }
+    | undefined;
   const goplsPath = options?.goplsPath ?? 'gopls';
   const roots = (params.workspaceFolders ?? []).map((folder) => folder.uri);
   if (roots.length === 0 && params.rootUri) roots.push(params.rootUri);
   const templateRoots = options?.templateRoots ?? [];
-  languageModes = getLanguageModes(goplsPath, roots, templateRoots);
+  const extraFuncs = normalizeExtraFuncs(options?.extraFuncs);
+  languageModes = getLanguageModes(goplsPath, roots, templateRoots, extraFuncs);
 
   return {
     capabilities: {
@@ -181,21 +184,26 @@ documents.onDidClose((e) => {
 
 connection.onDidChangeWatchedFiles((params) => {
   if (!languageModes) return;
+  const goUris: string[] = [];
   for (const change of params.changes) {
     if (change.uri.endsWith('.go')) {
-      languageModes.invalidateFuncMap();
+      goUris.push(change.uri);
     } else if (isTemplateFileUri(change.uri) && !documents.get(change.uri)) {
       languageModes.onTemplateFileEvent(change.uri, change.type);
     }
+  }
+  if (goUris.length > 0) {
+    languageModes.invalidateFuncMap(goUris);
   }
 });
 
 connection.onDidChangeConfiguration((change) => {
   const settings = (change.settings ?? {}) as {
-    goTemplate?: { templateRoots?: string[] };
+    goTemplate?: { templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> };
   };
   const templateRoots = settings.goTemplate?.templateRoots ?? [];
-  languageModes?.reconfigure(templateRoots);
+  const extraFuncs = normalizeExtraFuncs(settings.goTemplate?.extraFuncs);
+  languageModes?.reconfigure(templateRoots, extraFuncs);
 });
 
 documents.listen(connection);

@@ -38,15 +38,19 @@ test('merges the Go index across multiple workspace roots', async () => {
   const inferenceRoot = path.join(__dirname, '..', '..', '..', 'fixtures', 'inference-fixture');
   const runner = getGoIndexRunner([`file://${gotypeRoot}`, `file://${inferenceRoot}`]);
 
-  const index = await runner.getIndex();
-  assert.ok(
-    index.functions.some((f) => f.name === 'upper'),
-    `expected FuncMap entries from the first root, got: ${index.functions.map((f) => f.name).join(', ')}`,
-  );
-  assert.ok(
-    index.executeSites.some((s) => s.type.typeName === 'User'),
-    `expected execute sites from the second root, got: ${index.executeSites
-      .map((s) => s.type.typeName)
-      .join(', ')}`,
-  );
+  try {
+    const index = await runner.getIndex();
+    assert.ok(
+      index.functions.some((f) => f.name === 'upper'),
+      `expected FuncMap entries from the first root, got: ${index.functions.map((f) => f.name).join(', ')}`,
+    );
+    assert.ok(
+      index.executeSites.some((s) => s.type.typeName === 'User'),
+      `expected execute sites from the second root, got: ${index.executeSites
+        .map((s) => s.type.typeName)
+        .join(', ')}`,
+    );
+  } finally {
+    runner.dispose();
+  }
 });

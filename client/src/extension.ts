@@ -55,6 +55,9 @@ export function activate(context: ExtensionContext): void {
     initializationOptions: {
       goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls'),
       templateRoots: workspace.getConfiguration('goTemplate').get<string[]>('templateRoots', []),
+      extraFuncs: workspace
+        .getConfiguration('goTemplate')
+        .get<Record<string, unknown>>('extraFuncs', {}),
     },
   };
 
@@ -151,13 +154,21 @@ function updateEmmetContext(editor: TextEditor | undefined): void {
 function wireConfigurationSync(context: ExtensionContext): void {
   context.subscriptions.push(
     workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration('goTemplate.templateRoots')) return;
+      if (
+        !e.affectsConfiguration('goTemplate.templateRoots') &&
+        !e.affectsConfiguration('goTemplate.extraFuncs')
+      ) {
+        return;
+      }
       void client.sendNotification('workspace/didChangeConfiguration', {
         settings: {
           goTemplate: {
             templateRoots: workspace
               .getConfiguration('goTemplate')
               .get<string[]>('templateRoots', []),
+            extraFuncs: workspace
+              .getConfiguration('goTemplate')
+              .get<Record<string, unknown>>('extraFuncs', {}),
           },
         },
       });
