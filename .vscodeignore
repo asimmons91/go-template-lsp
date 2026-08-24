@@ -6,8 +6,10 @@
 node_modules/**
 
 # Build inputs (source, not shipped in the .vsix)
+docs/**
 fixtures/**
 funcmap/**
+scripts/**
 client/src/**
 client/tsconfig.json
 server/src/**

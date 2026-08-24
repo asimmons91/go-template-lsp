@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import * as ts from 'typescript';
 import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -39,11 +40,15 @@ function toCompletionItemKind(kind: ts.ScriptElementKind | string): CompletionIt
   return KIND_MAP[kind] ?? CompletionItemKind.Text;
 }
 
+function uriToPath(uri: string): string {
+  return decodeURIComponent(uri.replace(/^file:\/\//, ''));
+}
+
 class JsDocumentHost implements ts.LanguageServiceHost {
   private text = '';
   private version = 0;
 
-  constructor(private readonly fileName: string) {}
+  constructor(private readonly fileName: string, private readonly baseUrl: string | undefined) {}
 
   updateContent(newText: string): void {
     if (newText !== this.text) {
@@ -71,7 +76,7 @@ class JsDocumentHost implements ts.LanguageServiceHost {
   }
 
   getCurrentDirectory(): string {
-    return process.cwd();
+    return path.dirname(this.fileName);
   }
 
   getCompilationSettings(): ts.CompilerOptions {
@@ -79,6 +84,9 @@ class JsDocumentHost implements ts.LanguageServiceHost {
       allowJs: true,
       checkJs: false,
       target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeJs,
+      baseUrl: this.baseUrl,
       lib: ['lib.dom.d.ts', 'lib.es2022.d.ts'],
       jsx: ts.JsxEmit.None
     };
@@ -98,20 +106,22 @@ class JsDocumentHost implements ts.LanguageServiceHost {
 }
 
 interface JsEntry {
+  fileName: string;
   host: JsDocumentHost;
   service: ts.LanguageService;
 }
 
-export function getJSMode(): JSLanguageMode {
+export function getJSMode(rootUri: string | undefined): JSLanguageMode {
   const documents = new Map<string, JsEntry>();
+  const baseUrl = rootUri ? uriToPath(rootUri) : undefined;
 
   function getEntry(uri: string): JsEntry {
     let entry = documents.get(uri);
     if (!entry) {
-      const fileName = `${uri}.embedded.js`;
-      const host = new JsDocumentHost(fileName);
+      const fileName = `${uriToPath(uri)}.embedded.js`;
+      const host = new JsDocumentHost(fileName, baseUrl);
       const service = ts.createLanguageService(host, ts.createDocumentRegistry());
-      entry = { host, service };
+      entry = { fileName, host, service };
       documents.set(uri, entry);
     }
     return entry;
@@ -125,7 +135,7 @@ export function getJSMode(): JSLanguageMode {
       entry.host.updateContent(embedded.getText());
 
       const offset = embedded.offsetAt(position);
-      const fileName = `${document.uri}.embedded.js`;
+      const fileName = entry.fileName;
       const info = entry.service.getCompletionsAtPosition(fileName, offset, {});
       if (!info) {
         return CompletionList.create([], false);
@@ -144,7 +154,7 @@ export function getJSMode(): JSLanguageMode {
       const entry = getEntry(document.uri);
       entry.host.updateContent(embedded.getText());
 
-      const fileName = `${document.uri}.embedded.js`;
+      const fileName = entry.fileName;
       const jsRegions = regions.regions.filter((r) => r.languageId === 'javascript');
       const inRegion = (offset: number): boolean => jsRegions.some((r) => r.start <= offset && offset < r.end);
 

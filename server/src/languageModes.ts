@@ -44,7 +44,7 @@ export interface LanguageModes {
 export function getLanguageModes(goplsPath: string, rootUri: string | undefined): LanguageModes {
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
-  const jsMode = getJSMode();
+  const jsMode = getJSMode(rootUri);
   const funcMapIndexer = getFuncMapIndexer(rootUri);
   const templateNames = new TemplateNameService(rootUri);
   const goTemplateMode = getGoTemplateMode(goplsPath, rootUri, funcMapIndexer, templateNames);

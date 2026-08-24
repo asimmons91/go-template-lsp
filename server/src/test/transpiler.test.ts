@@ -137,3 +137,32 @@ test('rewrites a $var argument inside a call', () => {
   const { goSource } = transpileTemplate(uri, '{{ $x := .Name }}{{ upper $x }}', gotype, funcMapWithUpper);
   assert.match(goSource, /_ = upper\(v_x\)\n/);
 });
+
+test('transpiles a define body with dot unchanged', () => {
+  const { goSource } = transpileTemplate(uri, '{{define "main"}}{{ .Name }}{{end}}', gotype);
+  assert.match(goSource, /_ = dot\.Name\n/);
+});
+
+test('rebinds dot inside a block body', () => {
+  const { goSource } = transpileTemplate(uri, '{{block "content" .Address}}{{ .City }}{{end}}', gotype);
+  assert.match(goSource, /w0 := dot\.Address/);
+  assert.match(goSource, /_ = w0\.City\n/);
+});
+
+test('emits block else with the outer dot', () => {
+  const { goSource } = transpileTemplate(uri, '{{block "content" .Address}}{{ .City }}{{else}}{{ .Name }}{{end}}', gotype);
+  assert.match(goSource, /_ = w0\.City\n/);
+  assert.match(goSource, /_ = dot\.Name\n/);
+});
+
+test('emits range else as a valid scope block, not a for-else', () => {
+  const { goSource } = transpileTemplate(uri, '{{range .Items}}{{ .Title }}{{else}}empty{{end}}', gotype);
+  assert.doesNotMatch(goSource, /\} else \{/);
+  assert.doesNotMatch(goSource, /\}else\{/);
+});
+
+test('emits with else as a valid scope block, not a bare-block else', () => {
+  const { goSource } = transpileTemplate(uri, '{{with .Address}}{{ .City }}{{else}}{{ .Name }}{{end}}', gotype);
+  assert.doesNotMatch(goSource, /\} else \{/);
+  assert.match(goSource, /_ = dot\.Name\n/);
+});

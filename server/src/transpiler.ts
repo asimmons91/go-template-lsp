@@ -317,8 +317,10 @@ function emitNodes(
         }
         emitNodes(parts, segments, node.body, loopScope, nextId, state);
         push('\t}\n');
+        // A `for` statement cannot take an `else`, so the empty-range branch is
+        // emitted as a separate scope block (dot is the outer dot there).
         if (node.elseBody && node.elseBody.length > 0) {
-          push('\telse {\n');
+          push('\t{\n');
           emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
           push('\t}\n');
         }
@@ -340,8 +342,10 @@ function emitNodes(
           if (node.var) withScope.vars.set(node.var, wVar);
           emitNodes(parts, segments, node.body, withScope, nextId, state);
           push('\t}\n');
+          // `with` has no real `else` in Go, so the else branch becomes a fresh
+          // scope block (dot reverts to the outer dot there).
           if (node.elseBody && node.elseBody.length > 0) {
-            push('\telse {\n');
+            push('\t{\n');
             emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
             push('\t}\n');
           }
@@ -350,7 +354,46 @@ function emitNodes(
           emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
           push('\t}\n');
           if (node.elseBody && node.elseBody.length > 0) {
-            push('\telse {\n');
+            push('\t{\n');
+            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
+            push('\t}\n');
+          }
+        }
+        break;
+      }
+      case 'define': {
+        // A define's body shares the file's root type; dot is left unchanged and
+        // the body is wrapped in a bare block for scope hygiene.
+        push('\t{\n');
+        emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
+        push('\t}\n');
+        break;
+      }
+      case 'block': {
+        if (node.pipeline !== undefined) {
+          const { go, charMap } = rewritePipeline(node.pipeline, scope);
+          const wVar = `w${nextId()}`;
+          push('\t{\n');
+          push(`\t\t${wVar} := `);
+          const goStart = state.goLength;
+          push(go);
+          push('\n');
+          push(`\t\t_ = ${wVar}\n`);
+          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+
+          emitNodes(parts, segments, node.body, childScope(scope, wVar), nextId, state);
+          push('\t}\n');
+          if (node.elseBody && node.elseBody.length > 0) {
+            push('\t{\n');
+            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
+            push('\t}\n');
+          }
+        } else {
+          push('\t{\n');
+          emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
+          push('\t}\n');
+          if (node.elseBody && node.elseBody.length > 0) {
+            push('\t{\n');
             emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
             push('\t}\n');
           }

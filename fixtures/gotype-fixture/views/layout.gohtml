@@ -1,0 +1,13 @@
+{{- /* gotype: example.com/gotypefixture/model.User */ -}}
+{{define "main"}}
+<html>
+<body>
+  <p>{{ .N }}</p>
+  {{block "content" .Address}}
+    <p>{{ .C }}</p>
+  {{else}}
+    <p>{{ .A }}</p>
+  {{end}}
+</body>
+</html>
+{{end}}

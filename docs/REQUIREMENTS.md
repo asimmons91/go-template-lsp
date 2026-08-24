@@ -83,12 +83,15 @@ should not stop at the boundary of the comment.
     struct type, surface a diagnostic on the comment itself (distinct from
     the "no `gotype:` found" case, so a typo reads as "type not found" rather
     than silently falling back to no type information at all).
-- **Mechanism:** package-path completion can reuse `gopls`'s own workspace
-  package listing (the same data backing its import-statement completion);
-  struct-name completion for a given package is a `workspace/symbol` query
-  against `gopls`, filtered client-side to `SymbolKind.Struct` results scoped
-  to that package's import path. No new indexing infrastructure is needed
-  beyond what `gopls` already exposes.
+- **Mechanism:** package-path completion reuses `gopls`'s own import-statement
+  completion by asking it to complete a synthetic `import "<prefix>"` file placed
+  next to the template (so it joins the enclosing module). Struct-name completion
+  for a given package reuses the same trick with a synthetic
+  `var _ = gotmpl0.<prefix>` member-completion file, filtered client-side to
+  `SymbolKind.Struct` results (dropping functions, constants, interfaces, and
+  non-struct types). Validation of the final value reuses that same member query
+  and succeeds only when the exact name comes back as a struct. No new indexing
+  infrastructure is needed beyond what `gopls` already exposes.
 
 ### 4.2 FuncMap-aware completion
 - **Input:** `template.FuncMap{...}` composite literals and `.Funcs(...)` calls
@@ -133,11 +136,11 @@ a packaging/configuration requirement rather than a completion provider.
     workspace's settings, and document the manual step in the README for
     anyone who declines the prompt.
   - Correct behavior inside vs. outside `{{ }}` requires nothing extra from
-    us beyond what the TextMate grammar (§6, `gotmpl.tmLanguage.json`) already
+    us beyond what the TextMate grammar (§6, `gohtml.tmLanguage.json`) already
     does: because that grammar includes `text.html.basic` for everything
     outside a `{{ }}` span, standard HTML/CSS/JS scopes are already assigned
     correctly there, and `{{ }}` spans get the distinct
-    `meta.embedded.block.gotmpl` scope instead — which Emmet's scope-based
+    `meta.embedded.block.gohtml` scope instead — which Emmet's scope-based
     context detection won't recognize as HTML or CSS, so it naturally won't
     try to expand inside one. No new grammar work should be needed; this
     should mainly need verification against real fixture files, not new code.
@@ -259,7 +262,8 @@ message connection primitives, and sends standard `textDocument/didOpen` /
 synthetic transpiled Go file it maintains per template file. Completion inside
 the `gotype:` comment itself (§4.1a) is a separate, simpler request path that
 doesn't go through the transpiler at all — it queries `gopls` directly for
-package listings and `workspace/symbol` results, since there's no template
+package listings and member completions on synthetic `import "…"` /
+`var _ = pkg.…` files, since there's no template
 pipeline to translate at that point, just a string being typed.
 
 ## 6. Project structure
@@ -269,7 +273,7 @@ go-template-lsp/
 ├── package.json                  # extension manifest, language/grammar contribution
 ├── language-configuration.json   # brackets, comments for {{ }}
 ├── syntaxes/
-│   └── gotmpl.tmLanguage.json    # TextMate grammar, injects into text.html.basic
+│   └── gohtml.tmLanguage.json    # TextMate grammar, injects into text.html.basic
 ├── client/
 │   ├── package.json
 │   ├── tsconfig.json
@@ -291,7 +295,7 @@ go-template-lsp/
             └── goplsClient.ts    # spawns + speaks LSP to gopls over stdio
 ```
 
-(`package.json`, `language-configuration.json`, `syntaxes/gotmpl.tmLanguage.json`,
+(`package.json`, `language-configuration.json`, `syntaxes/gohtml.tmLanguage.json`,
 `client/package.json`, `client/tsconfig.json`, and `client/src/extension.ts` already
 exist in this repo as a starting skeleton. Everything under `server/` is still to
 be written.)
@@ -317,10 +321,11 @@ be written.)
   from a loop, or via a function that returns a `FuncMap`) will not be found by
   static analysis. Document this as a known gap rather than attempting full
   data-flow analysis.
-- **`$var`-prefixed variable definition tracking is incomplete** in the
-  transpilation approach for assignments outside of `range` (e.g.
-  `{{ $foo := $bar }}` at the top level) — inherited from the same limitation in
-  the existing open-source transpiler extension this design is modeled on.
+- **`$var`-prefixed variable tracking is partial.** Simple bindings such as
+  `{{ $x := .Field }}` are tracked (and narrowed through `range`/`with`), but a
+  `$var` whose value is another *unresolved* `$var` (e.g. `{{ $foo := $bar }}`
+  where `$bar` was never bound to a concrete type) degrades to `interface{}`
+  rather than surfacing a type error.
 - **gopls process lifecycle.** Needs restart/health-check handling if `gopls`
   crashes or the user's Go toolchain changes mid-session.
 - **Autoescape context (§3, non-goal)** means the extension won't catch
@@ -379,12 +384,12 @@ be written.)
 - Is automatic type inference from `Execute()`/`ExecuteTemplate()` call sites
   (as a fallback when no `gotype:` comment is present) worth the `go/packages`
   workspace-scan cost for v2, or should the comment stay mandatory?
-- Should the `emmet.includeLanguages` mapping (§4.4a) be written via
+- ~~Should the `emmet.includeLanguages` mapping (§4.4a) be written via
   `contributes.configurationDefaults` in `package.json` instead of an
-  activation-time prompt? That would enable it automatically for every user
-  with zero friction, but changes a setting without explicit per-user consent
-  — worth deciding deliberately rather than defaulting to whichever is less
-  code to write.
+  activation-time prompt?~~ *Resolved:* both are shipped — the extension sets
+  `contributes.configurationDefaults` for users who have never touched the
+  setting, and also prompts once to merge `gotmpl` into any pre-existing
+  user mapping (see `client/src/extension.ts`).
 - §4.4b covers auto-*inserting* a closing tag when one is first typed. A
   related but distinct feature — editing `<p>` to `<div>` and having the
   existing `</p>` update live to `</div>` — is VSCode's separate "linked

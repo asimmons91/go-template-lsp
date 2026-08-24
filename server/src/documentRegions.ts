@@ -1,5 +1,6 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageService as getHTMLLanguageService, TokenType } from 'vscode-html-languageservice';
+import { scanActions } from './templateParser';
 
 const htmlScannerService = getHTMLLanguageService();
 
@@ -23,50 +24,13 @@ export interface GoTemplateDocument {
 }
 
 /**
- * Walks raw template source for `{{ ... }}` action spans, honoring `{{-`/`-}}`
- * trim markers (which fall naturally inside the span) and skipping over string
- * literals so an embedded `}}` in a Go string argument doesn't end the span early.
+ * Walks raw template source for `{{ ... }}` action spans. Delegates to the
+ * single canonical scanner (`templateParser.scanActions`), which honors
+ * `{{-`/`-}}` trim markers and skips string literals *and* `/* ... * /` comments
+ * so an embedded `}}` inside either doesn't end the span early.
  */
 export function findActionSpans(text: string): ActionSpan[] {
-  const spans: ActionSpan[] = [];
-  const len = text.length;
-  let i = 0;
-  while (i < len) {
-    const start = text.indexOf('{{', i);
-    if (start === -1) break;
-
-    let j = start + 2;
-    let end = -1;
-    while (j < len) {
-      const ch = text[j];
-      if (ch === '"' || ch === '`') {
-        const quote = ch;
-        j++;
-        while (j < len && text[j] !== quote) {
-          if (quote === '"' && text[j] === '\\') {
-            j++;
-          }
-          j++;
-        }
-        j++;
-        continue;
-      }
-      if (ch === '}' && text[j + 1] === '}') {
-        end = j + 2;
-        break;
-      }
-      j++;
-    }
-
-    if (end === -1) {
-      spans.push({ start, end: len });
-      break;
-    }
-
-    spans.push({ start, end });
-    i = end;
-  }
-  return spans;
+  return scanActions(text).map((s) => ({ start: s.start, end: s.end }));
 }
 
 function stripQuotes(value: string): string {

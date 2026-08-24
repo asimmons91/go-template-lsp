@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { parseTemplate, TemplateNode } from '../templateParser';
+import { parseTemplate, scanActions, TemplateNode } from '../templateParser';
 
 function single(text: string): TemplateNode {
   const nodes = parseTemplate(text);
@@ -87,12 +87,40 @@ test('parses with $var binding', () => {
   assert.equal(node.pipeline, '.Address');
 });
 
-test('consumes define/block bodies structurally without surfacing them', () => {
+test('surfaces define/block bodies as nodes', () => {
   const nodes = parseTemplate('{{define "x"}}{{ .A }}{{end}}{{ .B }}');
-  assert.equal(nodes.length, 1);
-  assert.equal(nodes[0].kind, 'action');
-  if (nodes[0].kind !== 'action') return;
-  assert.equal(nodes[0].pipeline, '.B');
+  assert.equal(nodes.length, 2);
+  assert.equal(nodes[0].kind, 'define');
+  if (nodes[0].kind !== 'define') return;
+  assert.equal(nodes[0].name, 'x');
+  assert.equal(nodes[0].body.length, 1);
+  assert.equal(nodes[0].body[0].kind, 'action');
+  assert.equal(nodes[1].kind, 'action');
+  if (nodes[1].kind !== 'action') return;
+  assert.equal(nodes[1].pipeline, '.B');
+});
+
+test('parses a block name and pipeline', () => {
+  const node = single('{{block "content" .Address}}{{ .C }}{{end}}');
+  assert.equal(node.kind, 'block');
+  if (node.kind !== 'block') return;
+  assert.equal(node.name, 'content');
+  assert.equal(node.pipeline, '.Address');
+  assert.equal(node.body.length, 1);
+});
+
+test('parses a block else branch', () => {
+  const node = single('{{block "content" .Address}}{{ .C }}{{else}}{{ .N }}{{end}}');
+  assert.equal(node.kind, 'block');
+  if (node.kind !== 'block') return;
+  assert.equal(node.body.length, 1);
+  assert.equal(node.elseBody?.length, 1);
+});
+
+test('does not end a span on }} inside an action comment', () => {
+  const spans = scanActions('{{ if true /* }} */ .A }}');
+  assert.equal(spans.length, 1);
+  assert.equal(spans[0].end, '{{ if true /* }} */ .A }}'.length);
 });
 
 test('skips the gotype header comment', () => {

@@ -52,7 +52,7 @@
     "test": "npm run compile && cd server && npm test",
     "watch": "tsc -p ./client -w & tsc -p ./server -w",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package"
+    "package": "node scripts/preflight.mjs && vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

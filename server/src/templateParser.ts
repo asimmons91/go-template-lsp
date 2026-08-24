@@ -1,3 +1,5 @@
+import { readStringLiteralEnd } from './pipeline';
+
 export type TemplateNode =
   | {
       kind: 'action';
@@ -46,6 +48,24 @@ export type TemplateNode =
       pipeStart: number;
       pipeEnd: number;
       var?: string;
+      body: TemplateNode[];
+      elseBody?: TemplateNode[];
+    }
+  | {
+      kind: 'define';
+      start: number;
+      end: number;
+      name: string;
+      body: TemplateNode[];
+    }
+  | {
+      kind: 'block';
+      start: number;
+      end: number;
+      name: string;
+      pipeline?: string;
+      pipeStart: number;
+      pipeEnd: number;
       body: TemplateNode[];
       elseBody?: TemplateNode[];
     };
@@ -126,6 +146,21 @@ function firstKeyword(content: string): { keyword: string; rest: string } {
   return { keyword: '', rest: content };
 }
 
+/**
+ * Reads the leading quoted template-name literal from a `define`/`block` tail
+ * (e.g. ` "name" .`) and returns the unquoted name plus whatever follows.
+ * Non-literal names are tolerated by returning an empty name.
+ */
+function parseNameAndRest(rest: string): { name: string; rest: string } {
+  const trimmed = rest.trim();
+  if (trimmed[0] === '"' || trimmed[0] === '`') {
+    const end = readStringLiteralEnd(trimmed, 0);
+    const raw = trimmed.slice(0, end);
+    return { name: raw.slice(1, -1), rest: trimmed.slice(end).trim() };
+  }
+  return { name: '', rest: trimmed };
+}
+
 export type Classification =
   | { type: 'comment' }
   | { type: 'end' }
@@ -134,8 +169,8 @@ export type Classification =
   | { type: 'if'; pipeline: string }
   | { type: 'range'; pipeline: string; vars?: [string, string] }
   | { type: 'with'; pipeline?: string; var?: string }
-  | { type: 'define' }
-  | { type: 'block' }
+  | { type: 'define'; name: string }
+  | { type: 'block'; name: string; pipeline?: string }
   | { type: 'var'; name: string; assign: 'define' | 'assign'; pipeline: string }
   | { type: 'action'; pipeline: string };
 
@@ -179,10 +214,14 @@ export function classify(content: string): Classification {
       if (m) return { type: 'with', var: `$${m[1]}`, pipeline: m[2].trim() };
       return { type: 'with', pipeline: rest || undefined };
     }
-    case 'define':
-      return { type: 'define' };
-    case 'block':
-      return { type: 'block' };
+    case 'define': {
+      const { name } = parseNameAndRest(kw.rest);
+      return { type: 'define', name };
+    }
+    case 'block': {
+      const { name, rest } = parseNameAndRest(kw.rest);
+      return { type: 'block', name, pipeline: rest || undefined };
+    }
     default:
       return { type: 'action', pipeline: trimmed };
   }
@@ -306,12 +345,32 @@ export function parseTemplate(text: string): TemplateNode[] {
           });
           continue;
         }
-        case 'define':
-        case 'block':
+        case 'define': {
           i++;
-          parseBody();
+          const body = parseBody();
           if (i < spans.length && classify(spans[i].content).type === 'end') i++;
+          nodes.push({ kind: 'define', start: span.start, end: span.end, name: c.name, body });
           continue;
+        }
+        case 'block': {
+          const { pipeStart, pipeEnd } = pipeRange(span, c.pipeline ?? '');
+          i++;
+          const body = parseBody();
+          const elseBody = parseElseTail();
+          if (i < spans.length && classify(spans[i].content).type === 'end') i++;
+          nodes.push({
+            kind: 'block',
+            start: span.start,
+            end: span.end,
+            name: c.name,
+            pipeline: c.pipeline,
+            pipeStart,
+            pipeEnd,
+            body,
+            elseBody
+          });
+          continue;
+        }
       }
     }
     return nodes;
@@ -380,7 +439,7 @@ export function findPipelineAtOffset(nodes: TemplateNode[], offset: number): Pip
       }
       continue;
     }
-    if (node.kind === 'if' || node.kind === 'range' || node.kind === 'with') {
+    if (node.kind === 'if' || node.kind === 'range' || node.kind === 'with' || node.kind === 'block') {
       if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
         return { pipeline: node.pipeline, pipeStart: node.pipeStart };
       }
@@ -390,6 +449,9 @@ export function findPipelineAtOffset(nodes: TemplateNode[], offset: number): Pip
         const foundElse = findPipelineAtOffset(node.elseBody, offset);
         if (foundElse) return foundElse;
       }
+    }
+    if (node.kind === 'define') {
+      return findPipelineAtOffset(node.body, offset);
     }
   }
   return undefined;
