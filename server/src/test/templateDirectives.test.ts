@@ -42,5 +42,8 @@ test('ignores non-template actions and non-literal names', () => {
 test('reports multiple definitions in one document', () => {
   const text = '{{define "a"}}{{end}}{{define "b"}}{{end}}';
   const dirs = scanTemplateDirectives(text);
-  assert.deepEqual(dirs.map((d) => d.name), ['a', 'b']);
+  assert.deepEqual(
+    dirs.map((d) => d.name),
+    ['a', 'b'],
+  );
 });

@@ -1,5 +1,8 @@
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { getLanguageService as getHTMLLanguageService, TokenType } from 'vscode-html-languageservice';
+import {
+  getLanguageService as getHTMLLanguageService,
+  TokenType,
+} from 'vscode-html-languageservice';
 import { scanActions } from './templateParser';
 
 const htmlScannerService = getHTMLLanguageService();
@@ -34,7 +37,11 @@ export function findActionSpans(text: string): ActionSpan[] {
 }
 
 function stripQuotes(value: string): string {
-  if (value.length >= 2 && (value[0] === '"' || value[0] === "'") && value[value.length - 1] === value[0]) {
+  if (
+    value.length >= 2 &&
+    (value[0] === '"' || value[0] === "'") &&
+    value[value.length - 1] === value[0]
+  ) {
     return value.slice(1, -1);
   }
   return value;
@@ -83,12 +90,20 @@ export function scanStyleScriptRanges(text: string): EmbeddedRegion[] {
         break;
       case TokenType.Script:
         if (isJavaScriptType(currentTypeAttr)) {
-          regions.push({ languageId: 'javascript', start: scanner.getTokenOffset(), end: scanner.getTokenEnd() });
+          regions.push({
+            languageId: 'javascript',
+            start: scanner.getTokenOffset(),
+            end: scanner.getTokenEnd(),
+          });
         }
         break;
       case TokenType.Styles:
         if (isCssType(currentTypeAttr)) {
-          regions.push({ languageId: 'css', start: scanner.getTokenOffset(), end: scanner.getTokenEnd() });
+          regions.push({
+            languageId: 'css',
+            start: scanner.getTokenOffset(),
+            end: scanner.getTokenEnd(),
+          });
         }
         break;
       case TokenType.EndTagClose:
@@ -133,12 +148,20 @@ export function getDocumentRegions(document: TextDocument): GoTemplateDocument {
   const actionSpans = findActionSpans(text);
   const rawRegions = scanStyleScriptRanges(text);
   const maskedText = maskText(text, actionSpans, rawRegions);
-  const maskedDocument = TextDocument.create(document.uri, document.languageId, document.version, maskedText);
+  const maskedDocument = TextDocument.create(
+    document.uri,
+    document.languageId,
+    document.version,
+    maskedText,
+  );
   const regions = scanStyleScriptRanges(maskedText);
   return { maskedDocument, actionSpans, regions };
 }
 
-export function getLanguageAtOffset(regions: GoTemplateDocument, offset: number): EmbeddedLanguageId {
+export function getLanguageAtOffset(
+  regions: GoTemplateDocument,
+  offset: number,
+): EmbeddedLanguageId {
   for (const span of regions.actionSpans) {
     if (span.start <= offset && offset <= span.end) {
       return 'gotemplate';
@@ -160,7 +183,7 @@ export function getLanguageAtOffset(regions: GoTemplateDocument, offset: number)
 export function getEmbeddedDocument(
   document: TextDocument,
   regions: GoTemplateDocument,
-  languageId: 'css' | 'javascript'
+  languageId: 'css' | 'javascript',
 ): TextDocument {
   const chars = regions.maskedDocument.getText().split('');
   let cursor = 0;

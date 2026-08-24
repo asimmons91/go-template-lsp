@@ -59,7 +59,7 @@ export function scanTemplateDirectives(text: string): TemplateNameDirective[] {
       nameStart: base + q + 1,
       nameEnd: base + qEnd - 1,
       quoteStart: base + q,
-      quoteEnd: base + qEnd
+      quoteEnd: base + qEnd,
     });
   }
 

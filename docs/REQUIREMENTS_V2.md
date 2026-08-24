@@ -16,10 +16,12 @@ after v1 picked up tag auto-closing.
 ## 2. Feature requirements
 
 ### 2.1 Autoescape context awareness
+
 `html/template` rewrites its escaping behavior depending on whether an action
 sits in HTML text, an attribute value, a `<script>` string, a `<style>` value,
 or a URL — and can refuse to compile combinations it considers unsafe. v1 does
 not model this. v2 should:
+
 - Re-implement (or vendor) enough of the context-detection logic from
   `html/template`'s internal `escape.go` to classify each action's surrounding
   context.
@@ -30,25 +32,29 @@ not model this. v2 should:
   splitting (§5.3 of v1) as its input, rather than a separate parse pass.
 
 ### 2.2 Automatic type inference (fallback for missing `gotype:`)
+
 For files with no `gotype:` comment, scan the workspace (via `go/packages`) for
 `tmpl.Execute(w, X)` / `tmpl.ExecuteTemplate(w, "name", X)` call sites, match
 them to the template file(s) they operate on, and infer the root type from `X`.
+
 - If a template is executed with more than one distinct type across call
   sites, surface a non-blocking hint listing all inferred types rather than
   silently picking one — mirrors GoLand's ambiguity handling.
 - The explicit `gotype:` comment, when present, always wins over inference.
-- **Not to be confused with v1 §4.1a**, which makes *writing* a `gotype:`
+- **Not to be confused with v1 §4.1a**, which makes _writing_ a `gotype:`
   comment easier (autocompleting the package path and struct name as you
   type). This item is about the case where no comment is written at all —
   the two are complementary, not overlapping: §4.1a helps once you've decided
   to write the comment; this lets you skip writing one in the first place.
 
 ### 2.3 `text/template` (non-HTML) support
+
 Extend the language ID / grammar to a second file type (or a settings-driven
 mode) for plain `text/template` files, reusing the Go-side delegate entirely
 and simply skipping HTML/CSS/JS region splitting and autoescape analysis.
 
 ### 2.4 Refactor-safe renames
+
 - Renaming a Go struct field (via `gopls`'s own rename) should also update
   every `.FieldName` reference inside template actions that resolve to it.
 - Renaming a `{{define "name"}}` / `{{block "name"}}` should update every
@@ -56,28 +62,33 @@ and simply skipping HTML/CSS/JS region splitting and autoescape analysis.
   index built for define/block navigation in v1 §4.3.
 
 ### 2.5 Signature help
+
 Parameter hints (`textDocument/signatureHelp`) while typing arguments to a
 FuncMap function or a built-in pipeline function (`printf`, `index`, `len`,
 etc.), sourced from the same signature data already collected for FuncMap
 completion.
 
 ### 2.6 Hover documentation
+
 Surface Go doc comments on hover: a struct field's comment, a FuncMap
 function's comment, and (new) a comment placed directly above a
 `{{define "name"}}` block, if the author writes one.
 
 ### 2.7 Code actions / quick fixes
+
 - "Create missing `{{define "name"}}`" when `{{template "name"}}` references
   a name that doesn't resolve anywhere in the workspace.
 - "Add field to struct" when a `.Field` access doesn't resolve on the current
   `gotype:`-bound struct, generating the field via a `gopls`-backed edit.
 
 ### 2.8 Multi-module / multi-root workspace support
+
 v1 assumes a single Go module in a single workspace folder. v2 should handle
 multi-root workspaces and multiple `go.mod` files, resolving each template
 file's `gotype:` package path against the correct module.
 
 ### 2.9 Configurable template discovery
+
 A `goTemplate.templateRoots` (glob pattern list) setting so the define/block
 index and the HTML/CSS/JS delegates only scan relevant directories on large
 repos, plus explicit support for templates loaded via `embed.FS` +
@@ -85,22 +96,26 @@ repos, plus explicit support for templates loaded via `embed.FS` +
 unrelated `.html` files in the same tree.
 
 ### 2.10 Formatting
+
 Basic `textDocument/formatting` support for `.gotmpl` files — at minimum,
 consistent indentation of `{{if}}`/`{{range}}`/`{{end}}` blocks and the
 HTML they wrap, deferred to a real formatter (e.g. wrapping `prettier`'s HTML
 formatter for the masked HTML skeleton) rather than a hand-rolled one.
 
 ### 2.11 Semantic tokens
+
 Upgrade from the static TextMate grammar (v1) to `textDocument/semanticTokens`,
 so that, e.g., a `.Field` that fails to resolve on the current `gotype:`-bound
 struct is colored differently from one that resolves correctly — something a
 context-free grammar can't express.
 
 ### 2.12 Linked editing for HTML tag pairs
+
 Promoted from an open question v1 raised once it picked up tag auto-closing
 (§4.4b of `REQUIREMENTS.md`). Editing an opening tag's name (`<p>` → `<div>`)
 should live-update the matching closing tag, the same experience VSCode
 already gives plain `.html` files.
+
 - **Mechanism:** implement `textDocument/linkedEditingRange` — unlike tag
   auto-closing's `html/tag`, this is a real standard LSP request, so no custom
   client/server protocol is needed, only a handler in `htmlMode.ts` returning
@@ -142,7 +157,7 @@ already gives plain `.html` files.
   functions, cross-file `define`/`template`, at least one known split-tag
   case (to confirm it's suppressed, not to confirm it's fixed), Emmet
   expansion in both HTML and `<style>` contexts (§4.4a of v1), and tag
-  auto-closing including at least one void-element case that must *not* get
+  auto-closing including at least one void-element case that must _not_ get
   a closing tag (§4.4b of v1). The latter two were verified manually in v1's
   M2 — this harness is what turns that one-time verification into a
   regression guard.

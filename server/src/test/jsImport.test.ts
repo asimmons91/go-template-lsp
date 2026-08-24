@@ -11,7 +11,8 @@ test('resolves a relative import from the workspace inside <script>', async () =
   const templatePath = path.join(dir, 'page.gohtml');
   fs.writeFileSync(path.join(dir, 'helper.d.ts'), 'export declare const helperValue: number;\n');
 
-  const template = '<html><body><script>import { helperValue } from "./helper";\nconst x = helperV|</script></body></html>';
+  const template =
+    '<html><body><script>import { helperValue } from "./helper";\nconst x = helperV|</script></body></html>';
   const cursor = template.indexOf('|');
   const text = template.slice(0, cursor) + template.slice(cursor + 1);
   fs.writeFileSync(templatePath, text);
@@ -23,9 +24,12 @@ test('resolves a relative import from the workspace inside <script>', async () =
   try {
     const result = languageModes.getModeAtPosition(document, position);
     assert.ok(result, 'expected the javascript mode to be resolved');
-    const list = await result!.mode.doComplete(document, position, result!.regions);
+    const list = await result.mode.doComplete(document, position, result.regions);
     const labels = list.items.map((i) => i.label);
-    assert.ok(labels.includes('helperValue'), `expected 'helperValue' among JS completions, got: ${labels.join(', ')}`);
+    assert.ok(
+      labels.includes('helperValue'),
+      `expected 'helperValue' among JS completions, got: ${labels.join(', ')}`,
+    );
   } finally {
     languageModes.dispose();
     fs.rmSync(dir, { recursive: true, force: true });

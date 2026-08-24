@@ -186,7 +186,7 @@ export function classify(content: string): Classification {
         type: 'var',
         name: `$${varMatch[1]}`,
         assign: varMatch[2] === ':=' ? 'define' : 'assign',
-        pipeline: varMatch[3].trim()
+        pipeline: varMatch[3].trim(),
       };
     }
     return { type: 'action', pipeline: trimmed };
@@ -257,7 +257,16 @@ export function parseTemplate(text: string): TemplateNode[] {
       const body = parseBody();
       const elseBody = parseElseTail();
       return [
-        { kind: 'if', start: span.start, end: span.end, pipeline: c.pipeline, pipeStart, pipeEnd, body, elseBody }
+        {
+          kind: 'if',
+          start: span.start,
+          end: span.end,
+          pipeline: c.pipeline,
+          pipeStart,
+          pipeEnd,
+          body,
+          elseBody,
+        },
       ];
     }
     return undefined;
@@ -279,7 +288,14 @@ export function parseTemplate(text: string): TemplateNode[] {
           return nodes;
         case 'action': {
           const { pipeStart, pipeEnd } = pipeRange(span, c.pipeline);
-          nodes.push({ kind: 'action', start: span.start, end: span.end, pipeline: c.pipeline, pipeStart, pipeEnd });
+          nodes.push({
+            kind: 'action',
+            start: span.start,
+            end: span.end,
+            pipeline: c.pipeline,
+            pipeStart,
+            pipeEnd,
+          });
           i++;
           continue;
         }
@@ -293,7 +309,7 @@ export function parseTemplate(text: string): TemplateNode[] {
             assign: c.assign,
             pipeline: c.pipeline,
             pipeStart,
-            pipeEnd
+            pipeEnd,
           });
           i++;
           continue;
@@ -304,7 +320,16 @@ export function parseTemplate(text: string): TemplateNode[] {
           const body = parseBody();
           const elseBody = parseElseTail();
           if (i < spans.length && classify(spans[i].content).type === 'end') i++;
-          nodes.push({ kind: 'if', start: span.start, end: span.end, pipeline: c.pipeline, pipeStart, pipeEnd, body, elseBody });
+          nodes.push({
+            kind: 'if',
+            start: span.start,
+            end: span.end,
+            pipeline: c.pipeline,
+            pipeStart,
+            pipeEnd,
+            body,
+            elseBody,
+          });
           continue;
         }
         case 'range': {
@@ -322,7 +347,7 @@ export function parseTemplate(text: string): TemplateNode[] {
             pipeEnd,
             vars: c.vars,
             body,
-            elseBody
+            elseBody,
           });
           continue;
         }
@@ -341,7 +366,7 @@ export function parseTemplate(text: string): TemplateNode[] {
             pipeEnd,
             var: c.var,
             body,
-            elseBody
+            elseBody,
           });
           continue;
         }
@@ -367,7 +392,7 @@ export function parseTemplate(text: string): TemplateNode[] {
             pipeStart,
             pipeEnd,
             body,
-            elseBody
+            elseBody,
           });
           continue;
         }
@@ -400,7 +425,11 @@ export function validateTemplateSyntax(text: string): TemplateSyntaxIssue[] {
 
   for (const span of scanActions(text)) {
     if (!text.slice(span.start, span.end).endsWith('}}')) {
-      issues.push({ start: span.start, end: span.end, message: 'Unterminated template action (missing "}}").' });
+      issues.push({
+        start: span.start,
+        end: span.end,
+        message: 'Unterminated template action (missing "}}").',
+      });
       continue;
     }
 
@@ -431,7 +460,10 @@ export function validateTemplateSyntax(text: string): TemplateSyntaxIssue[] {
  * Finds the innermost pipeline (action/var/if/range/with) whose byte range
  * contains the given document offset, returning its source text and start offset.
  */
-export function findPipelineAtOffset(nodes: TemplateNode[], offset: number): PipelineAtOffset | undefined {
+export function findPipelineAtOffset(
+  nodes: TemplateNode[],
+  offset: number,
+): PipelineAtOffset | undefined {
   for (const node of nodes) {
     if (node.kind === 'action' || node.kind === 'var') {
       if (node.pipeStart <= offset && offset <= node.pipeEnd) {
@@ -439,7 +471,12 @@ export function findPipelineAtOffset(nodes: TemplateNode[], offset: number): Pip
       }
       continue;
     }
-    if (node.kind === 'if' || node.kind === 'range' || node.kind === 'with' || node.kind === 'block') {
+    if (
+      node.kind === 'if' ||
+      node.kind === 'range' ||
+      node.kind === 'with' ||
+      node.kind === 'block'
+    ) {
       if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
         return { pipeline: node.pipeline, pipeStart: node.pipeStart };
       }

@@ -82,12 +82,28 @@ function classifyCommand(pipeline: string, start: number, end: number): Pipeline
   let e = end;
   while (e > s && /\s/.test(pipeline[e - 1])) e--;
 
-  const base: PipelineCommand = { name: '', isCall: false, args: [], start: s, end: e, nameStart: s, nameEnd: s };
+  const base: PipelineCommand = {
+    name: '',
+    isCall: false,
+    args: [],
+    start: s,
+    end: e,
+    nameStart: s,
+    nameEnd: s,
+  };
   if (s >= e) return base;
 
   const ch = pipeline[s];
 
-  if (ch === '.' || ch === '$' || ch === '"' || ch === '`' || ch === "'" || ch === '(' || /[0-9]/.test(ch)) {
+  if (
+    ch === '.' ||
+    ch === '$' ||
+    ch === '"' ||
+    ch === '`' ||
+    ch === "'" ||
+    ch === '(' ||
+    /[0-9]/.test(ch)
+  ) {
     return base;
   }
 
@@ -95,7 +111,15 @@ function classifyCommand(pipeline: string, start: number, end: number): Pipeline
     let nameEnd = s + 1;
     while (nameEnd < e && /[A-Za-z0-9_]/.test(pipeline[nameEnd])) nameEnd++;
     const name = pipeline.slice(s, nameEnd);
-    return { name, isCall: true, args: tokenizeArgs(pipeline, nameEnd, e), start: s, end: e, nameStart: s, nameEnd };
+    return {
+      name,
+      isCall: true,
+      args: tokenizeArgs(pipeline, nameEnd, e),
+      start: s,
+      end: e,
+      nameStart: s,
+      nameEnd,
+    };
   }
 
   return base;

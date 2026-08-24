@@ -52,26 +52,100 @@
           "type": "string",
           "default": "gopls",
           "description": "Path to the gopls binary used for Go-side type checking inside template actions."
+        },
+        "goTemplate.templateRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns (relative to each workspace folder) limiting which directories are scanned for template files by the define/block index. Empty means scan every workspace folder."
+        },
+        "goTemplate.extraFuncs": {
+          "type": "object",
+          "default": {},
+          "description": "Extra template function signatures to register when static analysis cannot find them (e.g. functions built dynamically). Maps a function name to { params, results, variadic, imports, doc }.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "params": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "variadic": {
+                "type": "boolean"
+              },
+              "imports": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "doc": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
     "configurationDefaults": {
       "emmet.includeLanguages": {
         "gotmpl": "html"
+      },
+      "emmet.showAbbreviationSuggestions": false
+    },
+    "keybindings": [
+      {
+        "key": "tab",
+        "command": "tab",
+        "when": "gotmpl.inAction && config.emmet.triggerExpansionOnTab && editorTextFocus && !editorReadonly && !editorTabMovesFocus"
       }
-    }
+    ]
   },
   "scripts": {
     "postinstall": "cd client && npm install && cd ../server && npm install",
     "compile": "tsc -p ./client && tsc -p ./server",
     "test": "npm run compile && cd server && npm test",
+    "lint": "eslint \"client/src\" \"server/src\"",
+    "lint:fix": "eslint --fix \"client/src\" \"server/src\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "watch": "tsc -p ./client -w & tsc -p ./server -w",
     "vscode:prepublish": "npm run compile",
     "package": "node scripts/preflight.mjs && vsce package"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.11.0",
     "@vscode/vsce": "^3.9.2",
-    "typescript": "^5.4.0"
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.6",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.67.0"
   }
 }

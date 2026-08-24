@@ -6,11 +6,18 @@ import {
   InitializeResult,
   TextDocumentSyncKind,
   CompletionList,
-  Position
+  Position,
+  Range,
+  RenameParams,
+  LinkedEditingRangeRequest,
+  SemanticTokensRequest,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
 import { isTemplateFileUri } from './templateNameService';
+import { normalizeExtraFuncs, ExtraFuncsEntry } from './indexer/funcMapIndex';
+import { formatDocument } from './formatting';
+import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from './semanticTokens';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
@@ -30,34 +37,50 @@ function validateTextDocument(textDocument: TextDocument): void {
 
   pendingValidations.set(
     uri,
-    setTimeout(async () => {
+    setTimeout(() => {
       pendingValidations.delete(uri);
-      try {
-        const diagnostics = await languageModes.doDiagnostics(textDocument);
-        connection.sendDiagnostics({ uri, diagnostics });
-      } catch {
-        connection.sendDiagnostics({ uri, diagnostics: [] });
-      }
-    }, 150)
+      void languageModes
+        .doDiagnostics(textDocument)
+        .then((diagnostics) => connection.sendDiagnostics({ uri, diagnostics }))
+        .catch(() => connection.sendDiagnostics({ uri, diagnostics: [] }));
+    }, 150),
   );
 }
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
-  const goplsPath = (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
-  const rootUri = params.rootUri ?? params.workspaceFolders?.[0]?.uri ?? undefined;
-  languageModes = getLanguageModes(goplsPath, rootUri);
+  const options = params.initializationOptions as
+    | { goplsPath?: string; templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> }
+    | undefined;
+  const goplsPath = options?.goplsPath ?? 'gopls';
+  const roots = (params.workspaceFolders ?? []).map((folder) => folder.uri);
+  if (roots.length === 0 && params.rootUri) roots.push(params.rootUri);
+  const templateRoots = options?.templateRoots ?? [];
+  const extraFuncs = normalizeExtraFuncs(options?.extraFuncs);
+  languageModes = getLanguageModes(goplsPath, roots, templateRoots, extraFuncs);
 
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         resolveProvider: false,
-        triggerCharacters: ['<', '"', "'", '=', '/', '.', ':', '-', '@']
+        triggerCharacters: ['<', '"', "'", '=', '/', '.', ':', '-', '@'],
       },
       definitionProvider: true,
       referencesProvider: true,
-      hoverProvider: true
-    }
+      hoverProvider: true,
+      renameProvider: { prepareProvider: true },
+      signatureHelpProvider: { triggerCharacters: [' '] },
+      linkedEditingRangeProvider: true,
+      documentFormattingProvider: true,
+      semanticTokensProvider: {
+        legend: {
+          tokenTypes: [...SEMANTIC_TOKEN_TYPES],
+          tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
+        },
+        full: true,
+        range: false,
+      },
+    },
   };
 });
 
@@ -88,7 +111,10 @@ connection.onReferences(async (params) => {
   const result = languageModes.getModeAtPosition(document, params.position);
   if (!result?.mode.doReferences) return null;
 
-  return (await result.mode.doReferences(document, params.position, result.regions, params.context)) ?? null;
+  return (
+    (await result.mode.doReferences(document, params.position, result.regions, params.context)) ??
+    null
+  );
 });
 
 connection.onHover(async (params) => {
@@ -101,11 +127,68 @@ connection.onHover(async (params) => {
   return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
 });
 
-connection.onRequest('html/tag', (params: { textDocument: { uri: string }; position: Position }) => {
+connection.onSignatureHelp(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doSignatureHelp) return null;
+
+  return (await result.mode.doSignatureHelp(document, params.position, result.regions)) ?? null;
+});
+
+connection.onRequest(LinkedEditingRangeRequest.type, (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doLinkedEditing) return null;
+
+  return result.mode.doLinkedEditing(document, params.position, result.regions);
+});
+
+connection.onPrepareRename(async (params): Promise<Range | null> => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doPrepareRename) return null;
+
+  return (await result.mode.doPrepareRename(document, params.position, result.regions)) ?? null;
+});
+
+connection.onRenameRequest(async (params: RenameParams) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doRename) return null;
+
+  return (
+    (await result.mode.doRename(document, params.position, params.newName, result.regions)) ?? null
+  );
+});
+
+connection.onRequest(SemanticTokensRequest.type, async (params) => {
   const document = documents.get(params.textDocument.uri);
   if (!document || !languageModes) return null;
-  return languageModes.doTagComplete(document, params.position);
+  return languageModes.getSemanticTokens(document);
 });
+
+connection.onDocumentFormatting(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+  return formatDocument(document, params.options);
+});
+
+connection.onRequest(
+  'html/tag',
+  (params: { textDocument: { uri: string }; position: Position }) => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document || !languageModes) return null;
+    return languageModes.doTagComplete(document, params.position);
+  },
+);
 
 documents.onDidOpen((e) => {
   languageModes?.onDocumentOpened(e.document);
@@ -125,13 +208,26 @@ documents.onDidClose((e) => {
 
 connection.onDidChangeWatchedFiles((params) => {
   if (!languageModes) return;
+  const goUris: string[] = [];
   for (const change of params.changes) {
     if (change.uri.endsWith('.go')) {
-      languageModes.invalidateFuncMap();
+      goUris.push(change.uri);
     } else if (isTemplateFileUri(change.uri) && !documents.get(change.uri)) {
       languageModes.onTemplateFileEvent(change.uri, change.type);
     }
   }
+  if (goUris.length > 0) {
+    languageModes.invalidateFuncMap(goUris);
+  }
+});
+
+connection.onDidChangeConfiguration((change) => {
+  const settings = (change.settings ?? {}) as {
+    goTemplate?: { templateRoots?: string[]; extraFuncs?: Record<string, ExtraFuncsEntry> };
+  };
+  const templateRoots = settings.goTemplate?.templateRoots ?? [];
+  const extraFuncs = normalizeExtraFuncs(settings.goTemplate?.extraFuncs);
+  languageModes?.reconfigure(templateRoots, extraFuncs);
 });
 
 documents.listen(connection);

@@ -1,8 +1,27 @@
-import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Hover, Location, Position, Range, ReferenceContext } from 'vscode-languageserver/node';
+import * as fs from 'fs';
+import {
+  CompletionItem,
+  CompletionItemKind,
+  CompletionList,
+  Diagnostic,
+  DiagnosticSeverity,
+  Hover,
+  Location,
+  ParameterInformation,
+  Position,
+  Range,
+  ReferenceContext,
+  SemanticTokens,
+  SignatureHelp,
+  SignatureInformation,
+  TextEdit,
+  WorkspaceEdit,
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
-import { parseGotypeComment } from '../gotype';
+import { GotypeDescriptor, parseGotypeComment } from '../gotype';
+import { ExecuteSiteIndex, InferredType } from '../inference/executeSiteIndex';
 import {
   completePackagePath,
   completeStructNames,
@@ -10,32 +29,47 @@ import {
   findGotypeValueSpan,
   GotypeValueSpan,
   resolveGotypeType,
-  splitGotypeValue
+  splitGotypeValue,
 } from '../gotypeCompletion';
-import { parseTemplate, findPipelineAtOffset, validateTemplateSyntax } from '../templateParser';
-import { scanTemplateDirectives } from '../templateDirectives';
-import { parsePipeline } from '../pipeline';
+import {
+  parseTemplate,
+  findPipelineAtOffset,
+  validateTemplateSyntax,
+  scanActions,
+  classify,
+  ActionSpan,
+} from '../templateParser';
+import { scanTemplateDirectives, TemplateNameDirective } from '../templateDirectives';
+import { parsePipeline, PipelineCommand } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
-import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
-import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../funcmap/funcMapIndex';
+import { createGoplsClient, GoplsClient, WorkspaceFolder } from '../gopls/goplsClient';
+import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
 import { TemplateNameService } from '../templateNameService';
+import { annotateUnresolvedFields, buildSemanticTokens, tokenize } from '../semanticTokens';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
+  getSemanticTokens(document: TextDocument): Promise<SemanticTokens>;
   dispose(): void;
 }
 
 export function getGoTemplateMode(
   goplsPath: string,
   rootUri: string | undefined,
+  workspaceFolders: WorkspaceFolder[] | undefined,
   funcMapIndexer: FuncMapIndexer,
-  templateNames: TemplateNameService
+  templateNames: TemplateNameService,
+  executeSiteIndex: ExecuteSiteIndex,
 ): GoTemplateLanguageMode {
-  const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
+  const client: GoplsClient = createGoplsClient(goplsPath, rootUri, workspaceFolders);
 
   return {
     getId: () => 'gotemplate',
 
-    async doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): Promise<CompletionList> {
+    async doComplete(
+      document: TextDocument,
+      position: Position,
+      regions: GoTemplateDocument,
+    ): Promise<CompletionList> {
       const text = document.getText();
       const offset = document.offsetAt(position);
 
@@ -47,7 +81,9 @@ export function getGoTemplateMode(
         return completeGotypeValue(client, document, offset, gotypeSpan);
       }
 
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (directive && directive.keyword === 'template') {
         await templateNames.ensureReady();
         const prefix = text.slice(directive.nameStart, offset);
@@ -58,7 +94,7 @@ export function getGoTemplateMode(
         return CompletionList.create(items, true);
       }
 
-      const gotype = parseGotypeComment(text);
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return CompletionList.create([], false);
 
       const nodes = parseTemplate(text);
@@ -82,16 +118,62 @@ export function getGoTemplateMode(
       return client.completion(uri, goOffset);
     },
 
-    async doDefinition(document: TextDocument, position: Position): Promise<Location[] | undefined> {
+    async doSignatureHelp(
+      document: TextDocument,
+      position: Position,
+      regions: GoTemplateDocument,
+    ): Promise<SignatureHelp | null> {
       const text = document.getText();
       const offset = document.offsetAt(position);
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+
+      const span = regions.actionSpans.find((s) => s.start <= offset && offset <= s.end);
+      if (!span) return null;
+
+      const nodes = parseTemplate(text);
+      const pipe = findPipelineAtOffset(nodes, offset);
+      if (!pipe) return null;
+
+      const commands = parsePipeline(pipe.pipeline);
+      const cursorRel = offset - pipe.pipeStart;
+
+      let target: PipelineCommand | undefined;
+      let targetIndex = -1;
+      for (let i = 0; i < commands.length; i++) {
+        const cmd = commands[i];
+        if (!cmd.isCall) continue;
+        if (cursorRel >= cmd.start && cursorRel <= cmd.end) {
+          target = cmd;
+          targetIndex = i;
+        }
+      }
+      if (!target) return null;
+
+      let entry = BUILTINS.find((b) => b.name === target.name);
+      if (!entry) entry = (await funcMapIndexer.getIndex()).get(target.name);
+      if (!entry) return null;
+
+      return {
+        signatures: [buildSignatureInformation(entry)],
+        activeSignature: 0,
+        activeParameter: activeParameterFor(target, targetIndex, cursorRel, entry.params.length),
+      };
+    },
+
+    async doDefinition(
+      document: TextDocument,
+      position: Position,
+    ): Promise<Location[] | undefined> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (directive) {
         await templateNames.ensureReady();
         return templateNames.getDefinitions(directive.name);
       }
 
-      const gotype = parseGotypeComment(text);
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return undefined;
 
       const nodes = parseTemplate(text);
@@ -110,22 +192,79 @@ export function getGoTemplateMode(
       document: TextDocument,
       position: Position,
       _regions: GoTemplateDocument,
-      context: ReferenceContext
+      context: ReferenceContext,
     ): Promise<Location[] | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (!directive) return undefined;
       await templateNames.ensureReady();
       const refs = templateNames.getReferences(directive.name);
-      return context.includeDeclaration ? refs.concat(templateNames.getDefinitions(directive.name)) : refs;
+      return context.includeDeclaration
+        ? refs.concat(templateNames.getDefinitions(directive.name))
+        : refs;
+    },
+
+    doPrepareRename(document: TextDocument, position: Position): Range | null {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
+      if (directive) {
+        return Range.create(
+          document.positionAt(directive.nameStart),
+          document.positionAt(directive.nameEnd),
+        );
+      }
+
+      const field = findFieldAccessAt(text, offset);
+      if (!field) return null;
+      return Range.create(document.positionAt(field.start), document.positionAt(field.end));
+    },
+
+    async doRename(
+      document: TextDocument,
+      position: Position,
+      newName: string,
+    ): Promise<WorkspaceEdit | undefined> {
+      const text = document.getText();
+      const offset = document.offsetAt(position);
+
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
+      if (directive) {
+        return renameTemplateName(directive.name, newName, templateNames);
+      }
+
+      const field = findFieldAccessAt(text, offset);
+      if (!field) return undefined;
+      return renameField(document, field, newName, client, executeSiteIndex, templateNames);
     },
 
     async doHover(document: TextDocument, position: Position): Promise<Hover | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
 
-      const gotype = parseGotypeComment(text);
+      const directive = scanTemplateDirectives(text).find(
+        (d) =>
+          (d.keyword === 'define' || d.keyword === 'block') &&
+          d.nameStart <= offset &&
+          offset <= d.nameEnd,
+      );
+      if (directive) {
+        const comment = findDefineComment(text, directive);
+        return comment ? { contents: { kind: 'markdown', value: comment } } : undefined;
+      }
+
+      const functionHover = await hoverFunctionName(text, offset, funcMapIndexer);
+      if (functionHover) return functionHover;
+
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return undefined;
 
       const nodes = parseTemplate(text);
@@ -146,15 +285,32 @@ export function getGoTemplateMode(
         range: Range.create(document.positionAt(issue.start), document.positionAt(issue.end)),
         message: issue.message,
         severity: DiagnosticSeverity.Error,
-        source: 'go-template'
+        source: 'go-template',
       }));
 
-      const gotype = parseGotypeComment(text);
-      if (!gotype) return diagnostics;
+      const binding = await resolveGotype(document, executeSiteIndex);
+      const gotype = binding.gotype;
+      if (!gotype) {
+        if (binding.inferred.length > 1) {
+          const names = binding.inferred.map((t) => `${t.importPath}.${t.typeName}`).join(', ');
+          diagnostics.push({
+            range: Range.create({ line: 0, character: 0 }, { line: 0, character: 0 }),
+            message: `Template executed with multiple types (${names}); add a gotype: comment to disambiguate.`,
+            severity: DiagnosticSeverity.Hint,
+            source: 'go-template',
+          });
+        }
+        return diagnostics;
+      }
 
       if (!(await client.health())) return diagnostics;
 
-      const resolved = await resolveGotypeType(client, document.uri, gotype.importPath, gotype.typeName);
+      const resolved = await resolveGotypeType(
+        client,
+        document.uri,
+        gotype.importPath,
+        gotype.typeName,
+      );
       if (!resolved) {
         const span = findGotypeValueRange(text);
         const range = span
@@ -165,7 +321,7 @@ export function getGoTemplateMode(
           range,
           message: `gotype type "${gotype.importPath}.${gotype.typeName}" not found or not a struct type.`,
           severity: DiagnosticSeverity.Error,
-          source: 'go-template'
+          source: 'go-template',
         });
         return diagnostics;
       }
@@ -187,15 +343,36 @@ export function getGoTemplateMode(
           range: Range.create(document.positionAt(mapped.start), document.positionAt(mapped.end)),
           message: d.message,
           severity: d.severity ?? DiagnosticSeverity.Error,
-          source: 'go-template'
+          source: 'go-template',
         });
       }
       return diagnostics;
     },
 
+    async getSemanticTokens(document: TextDocument): Promise<SemanticTokens> {
+      const text = document.getText();
+      const tokens = tokenize(text);
+
+      const binding = await resolveGotype(document, executeSiteIndex);
+      const gotype = binding.gotype;
+      if (gotype && (await client.health())) {
+        const funcMap = await funcMapIndexer.getIndex();
+        const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);
+        await client.openOrUpdate(uri, goSource);
+        await annotateUnresolvedFields(tokens, async (offset) => {
+          const goOffset = mapOffset(offset);
+          if (goOffset < 0) return false;
+          const defs = await client.definition(uri, resolveGoOffset(goSource, goOffset));
+          return defs.some((d) => !isSyntheticUri(d.uri));
+        });
+      }
+
+      return buildSemanticTokens(tokens, document);
+    },
+
     dispose() {
       client.dispose();
-    }
+    },
   };
 }
 
@@ -230,6 +407,302 @@ function positionToOffset(text: string, position: Position): number {
   return lineStart + position.character;
 }
 
+interface ResolvedGotype {
+  gotype?: GotypeDescriptor;
+  /** All inferred types (empty when a `gotype:` comment is present). */
+  inferred: InferredType[];
+}
+
+/**
+ * Resolves the root type for a template file: the explicit `gotype:` comment
+ * always wins, otherwise fall back to execute-site inference (§2.2). `inferred`
+ * carries the full inferred list so diagnostics can surface an ambiguity hint
+ * instead of silently picking one when multiple distinct types are found.
+ */
+async function resolveGotype(
+  document: TextDocument,
+  executeSiteIndex: ExecuteSiteIndex,
+): Promise<ResolvedGotype> {
+  return resolveGotypeFor(document.uri, document.getText(), executeSiteIndex);
+}
+
+/**
+ * Variant of {@link resolveGotype} that takes raw text + URI rather than a
+ * TextDocument, so the field-rename sweep can resolve the root type for sibling
+ * template files read straight from disk.
+ */
+async function resolveGotypeFor(
+  uri: string,
+  text: string,
+  executeSiteIndex: ExecuteSiteIndex,
+): Promise<ResolvedGotype> {
+  const comment = parseGotypeComment(text);
+  if (comment) return { gotype: comment, inferred: [] };
+
+  const inferred = await executeSiteIndex.resolveGotype(uri);
+  if (inferred.length === 1) {
+    const first = inferred[0];
+    return { gotype: { importPath: first.importPath, typeName: first.typeName }, inferred };
+  }
+  return { inferred };
+}
+
+interface FieldAccess {
+  name: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Locates a `.Field` selector under the cursor. Template field access is always
+ * spelled `.Field` regardless of base (`.`, `$var`, or a nested chain), so the
+ * only requirement is that the identifier token is preceded by a `.`.
+ */
+function findFieldAccessAt(text: string, offset: number): FieldAccess | undefined {
+  let start = offset;
+  while (start > 0 && /[A-Za-z0-9_]/.test(text[start - 1])) start--;
+  let end = offset;
+  while (end < text.length && /[A-Za-z0-9_]/.test(text[end])) end++;
+  if (start === end || !/[A-Za-z_]/.test(text[start])) return undefined;
+  if (start === 0 || text[start - 1] !== '.') return undefined;
+  return { name: text.slice(start, end), start, end };
+}
+
+function offsetToPosition(text: string, offset: number): Position {
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text[i] === '\n') {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: offset - lineStart };
+}
+
+function readFileFromUri(uri: string): string | undefined {
+  try {
+    return fs.readFileSync(decodeURIComponent(uri.replace(/^file:\/\//, '')), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+const SYNTHETIC_SUFFIX = '.gotmpl_completion.go';
+
+function isSyntheticUri(uri: string): boolean {
+  return uri.endsWith(SYNTHETIC_SUFFIX);
+}
+
+function sameLocation(a: Location, b: Location): boolean {
+  return (
+    a.uri === b.uri &&
+    a.range.start.line === b.range.start.line &&
+    a.range.start.character === b.range.start.character
+  );
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Every `.fieldName` selector occurrence in the source, as name offsets
+ * (excluding the leading `.`). Word-boundary safe so a field named `Name`
+ * doesn't match `NameLength`.
+ */
+function findSelectorOccurrences(
+  text: string,
+  fieldName: string,
+): Array<{ start: number; end: number }> {
+  const occurrences: Array<{ start: number; end: number }> = [];
+  const re = new RegExp(`\\.(${escapeRegex(fieldName)})(?![A-Za-z0-9_])`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    occurrences.push({ start: m.index + 1, end: m.index + 1 + fieldName.length });
+  }
+  return occurrences;
+}
+
+function dedupeChanges(edits: Map<string, TextEdit[]>): Record<string, TextEdit[]> {
+  const out: Record<string, TextEdit[]> = {};
+  for (const [uri, list] of edits) {
+    const seen = new Set<string>();
+    const unique: TextEdit[] = [];
+    for (const e of list) {
+      const key = `${e.range.start.line}:${e.range.start.character}-${e.range.end.line}:${e.range.end.character}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(e);
+    }
+    unique.sort(
+      (a, b) =>
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
+    );
+    out[uri] = unique;
+  }
+  return out;
+}
+
+/** Extracts per-URI text edits from a WorkspaceEdit whether gopls used `changes` or `documentChanges`. */
+function workspaceEditChanges(
+  edit: WorkspaceEdit | undefined,
+): Map<string, TextEdit[]> | undefined {
+  if (!edit) return undefined;
+  const out = new Map<string, TextEdit[]>();
+  if (edit.changes) {
+    for (const [uri, edits] of Object.entries(edit.changes)) out.set(uri, edits);
+    return out;
+  }
+  if (edit.documentChanges) {
+    for (const dc of edit.documentChanges) {
+      if (!('textDocument' in dc)) continue;
+      const uri = dc.textDocument.uri;
+      const arr = out.get(uri) ?? [];
+      arr.push(...dc.edits);
+      out.set(uri, arr);
+    }
+    return out;
+  }
+  return undefined;
+}
+
+/**
+ * §2.4 (name direction) — renames a `define`/`block` name across every
+ * definition and `template`/`block` call site, reusing the workspace index built
+ * for define/block navigation. A `block` is both a definition and a reference,
+ * so the two lists are merged and de-duplicated.
+ */
+async function renameTemplateName(
+  name: string,
+  newName: string,
+  templateNames: TemplateNameService,
+): Promise<WorkspaceEdit> {
+  await templateNames.ensureReady();
+  const edits = new Map<string, TextEdit[]>();
+  const push = (loc: Location): void => {
+    const arr = edits.get(loc.uri) ?? [];
+    arr.push(TextEdit.replace(loc.range, newName));
+    edits.set(loc.uri, arr);
+  };
+  for (const loc of templateNames.getDefinitions(name)) push(loc);
+  for (const loc of templateNames.getReferences(name)) push(loc);
+  return { changes: dedupeChanges(edits) };
+}
+
+/**
+ * §2.4 (field direction) — renames a struct field referenced by a `.Field` /
+ * `$var.Field` selector. The Go-side rename is delegated to gopls (which
+ * rewrites the declaration and every `.go` reference), and template-side
+ * references across the workspace are rewritten after confirming each resolves
+ * to the same field declaration via gopls (so a same-named field on a different
+ * type — e.g. shadowed by a `range` element — is left untouched).
+ */
+async function renameField(
+  document: TextDocument,
+  field: FieldAccess,
+  newName: string,
+  client: GoplsClient,
+  executeSiteIndex: ExecuteSiteIndex,
+  templateNames: TemplateNameService,
+): Promise<WorkspaceEdit | undefined> {
+  const text = document.getText();
+  const binding = await resolveGotype(document, executeSiteIndex);
+  const gotype = binding.gotype;
+  if (!gotype) return undefined;
+
+  const current = transpileTemplate(document.uri, text, gotype);
+  const goOffset = current.mapOffset(field.start);
+  if (goOffset < 0) return undefined;
+
+  await client.openOrUpdate(current.uri, current.goSource);
+  const defs = await client.definition(current.uri, resolveGoOffset(current.goSource, goOffset));
+  const fieldDecl = defs.find((d) => !isSyntheticUri(d.uri));
+  if (!fieldDecl) return undefined;
+
+  const changes = new Map<string, TextEdit[]>();
+
+  const goText = readFileFromUri(fieldDecl.uri);
+  if (goText !== undefined) {
+    const declOffset = positionToOffset(goText, fieldDecl.range.start);
+    await client.openOrUpdate(fieldDecl.uri, goText);
+    const goChanges = workspaceEditChanges(await client.rename(fieldDecl.uri, declOffset, newName));
+    if (goChanges) {
+      for (const [uri, edits] of goChanges) {
+        if (isSyntheticUri(uri)) continue;
+        changes.set(uri, edits);
+      }
+    }
+  }
+
+  const files: Array<{ uri: string; text: string }> = [{ uri: document.uri, text }];
+  for (const siblingUri of templateNames.getAllFiles()) {
+    if (siblingUri === document.uri) continue;
+    const siblingText = readFileFromUri(siblingUri);
+    if (siblingText === undefined) continue;
+    files.push({ uri: siblingUri, text: siblingText });
+  }
+
+  for (const file of files) {
+    const fileBinding =
+      file.uri === document.uri
+        ? binding
+        : await resolveGotypeFor(file.uri, file.text, executeSiteIndex);
+    const fileGotype = fileBinding.gotype;
+    if (!fileGotype) continue;
+
+    const occurrences = await collectFieldOccurrences(
+      file.uri,
+      file.text,
+      field.name,
+      fileGotype,
+      fieldDecl,
+      client,
+    );
+    if (occurrences.length === 0) continue;
+
+    const arr = changes.get(file.uri) ?? [];
+    for (const occ of occurrences) {
+      arr.push(
+        TextEdit.replace(
+          Range.create(
+            offsetToPosition(file.text, occ.start),
+            offsetToPosition(file.text, occ.end),
+          ),
+          newName,
+        ),
+      );
+    }
+    changes.set(file.uri, arr);
+  }
+
+  return { changes: dedupeChanges(changes) };
+}
+
+async function collectFieldOccurrences(
+  fileUri: string,
+  text: string,
+  fieldName: string,
+  gotype: GotypeDescriptor,
+  fieldDecl: Location,
+  client: GoplsClient,
+): Promise<Array<{ start: number; end: number }>> {
+  const { uri, goSource, mapOffset } = transpileTemplate(fileUri, text, gotype);
+  await client.openOrUpdate(uri, goSource);
+
+  const occurrences: Array<{ start: number; end: number }> = [];
+  for (const occ of findSelectorOccurrences(text, fieldName)) {
+    const goOffset = mapOffset(occ.start);
+    if (goOffset < 0) continue;
+    const defs = await client.definition(uri, resolveGoOffset(goSource, goOffset));
+    if (defs.some((d) => !isSyntheticUri(d.uri) && sameLocation(d, fieldDecl))) {
+      occurrences.push(occ);
+    }
+  }
+  return occurrences;
+}
+
 const TEMPLATE_BUILTIN_NAMES = new Set(BUILTINS.map((b) => b.name));
 
 /**
@@ -253,7 +726,7 @@ async function completeGotypeValue(
   client: GoplsClient,
   document: TextDocument,
   offset: number,
-  span: GotypeValueSpan
+  span: GotypeValueSpan,
 ): Promise<CompletionList> {
   const { packagePath, typePrefix, hasTypeSeparator } = splitGotypeValue(span.value);
 
@@ -280,7 +753,7 @@ async function completeGotypeValue(
 function completeFunctionNames(
   pipeline: string,
   cursorRel: number,
-  funcMap: ReadonlyMap<string, FuncMapEntry>
+  funcMap: ReadonlyMap<string, FuncMapEntry>,
 ): CompletionList | undefined {
   for (const cmd of parsePipeline(pipeline)) {
     if (cursorRel < cmd.nameStart || cursorRel > cmd.nameEnd) continue;
@@ -293,7 +766,7 @@ function completeFunctionNames(
         label: entry.name,
         kind: CompletionItemKind.Function,
         detail: formatSignature(entry),
-        sortText: `0${entry.name}`
+        sortText: `0${entry.name}`,
       });
     }
     return CompletionList.create(items, true);
@@ -315,4 +788,99 @@ function formatSignature(entry: FuncMapEntry): string {
         ? ` ${entry.results[0]}`
         : ` (${entry.results.join(', ')})`;
   return `func(${params})${results}`;
+}
+
+/**
+ * Builds a signature-help entry for a FuncMap/builtin function from its index
+ * entry: one `ParameterInformation` per parameter, with the last marked variadic
+ * when applicable, and the same label used in completion details.
+ */
+function buildSignatureInformation(entry: FuncMapEntry): SignatureInformation {
+  const parameters: ParameterInformation[] = entry.params.map((p, i) => {
+    const type = entry.variadic && i === entry.params.length - 1 ? `...${p.type}` : p.type;
+    return { label: p.name ? `${p.name} ${type}` : type };
+  });
+  return { label: formatSignature(entry), parameters };
+}
+
+/**
+ * Determines which parameter the cursor is editing. A chained command receives
+ * the piped-in value as argument 0, so explicit arguments start at index 1; the
+ * result is clamped to the last declared parameter (variadic functions fold all
+ * trailing arguments into it).
+ */
+function activeParameterFor(
+  cmd: PipelineCommand,
+  commandIndex: number,
+  cursorRel: number,
+  paramCount: number,
+): number {
+  let active = commandIndex === 0 ? 0 : 1;
+  for (const arg of cmd.args) {
+    if (cursorRel <= arg.end) break;
+    active++;
+  }
+  return Math.max(0, Math.min(active, paramCount - 1));
+}
+
+/**
+ * Finds a `{{/* ... *\/}}` comment placed directly above a `{{define}}`/`{{block}}`
+ * directive (only whitespace in between) and returns its inner text.
+ */
+function findDefineComment(text: string, directive: TemplateNameDirective): string | undefined {
+  const spans = scanActions(text);
+
+  let dirSpan: ActionSpan | undefined;
+  for (const s of spans) {
+    if (s.start <= directive.nameStart && directive.nameEnd <= s.end) {
+      dirSpan = s;
+      break;
+    }
+  }
+  if (!dirSpan) return undefined;
+
+  let nearest: ActionSpan | undefined;
+  for (const s of spans) {
+    if (s.end > dirSpan.start) break;
+    nearest = s;
+  }
+  if (!nearest || classify(nearest.content).type !== 'comment') return undefined;
+  if (/[^\s]/.test(text.slice(nearest.end, dirSpan.start))) return undefined;
+  return commentText(nearest);
+}
+
+function commentText(span: ActionSpan): string {
+  const start = span.content.indexOf('/*');
+  const end = span.content.lastIndexOf('*/');
+  if (start === -1 || end === -1 || end <= start) return '';
+  return span.content.slice(start + 2, end).trim();
+}
+
+/**
+ * Hovers the name of a FuncMap/builtin call command: its Go doc comment when the
+ * indexer captured one, otherwise the formatted signature as a code block.
+ */
+async function hoverFunctionName(
+  text: string,
+  offset: number,
+  funcMapIndexer: FuncMapIndexer,
+): Promise<Hover | undefined> {
+  const nodes = parseTemplate(text);
+  const pipe = findPipelineAtOffset(nodes, offset);
+  if (!pipe) return undefined;
+
+  const cursorRel = offset - pipe.pipeStart;
+  for (const cmd of parsePipeline(pipe.pipeline)) {
+    if (!cmd.isCall || cursorRel < cmd.nameStart || cursorRel > cmd.nameEnd) continue;
+
+    let entry = BUILTINS.find((b) => b.name === cmd.name);
+    if (!entry) entry = (await funcMapIndexer.getIndex()).get(cmd.name);
+    if (!entry) return undefined;
+
+    if (entry.doc?.trim()) {
+      return { contents: { kind: 'markdown', value: entry.doc.trim() } };
+    }
+    return { contents: { kind: 'markdown', value: `\`\`\`go\n${formatSignature(entry)}\n\`\`\`` } };
+  }
+  return undefined;
 }

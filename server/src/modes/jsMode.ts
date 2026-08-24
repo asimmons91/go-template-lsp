@@ -1,7 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
+import {
+  CompletionItem,
+  CompletionItemKind,
+  CompletionList,
+  Diagnostic,
+  DiagnosticSeverity,
+  Range,
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { getEmbeddedDocument } from '../documentRegions';
@@ -33,7 +40,7 @@ const KIND_MAP: Partial<Record<string, CompletionItemKind>> = {
   [ts.ScriptElementKind.letElement]: CompletionItemKind.Variable,
   [ts.ScriptElementKind.alias]: CompletionItemKind.Reference,
   [ts.ScriptElementKind.moduleElement]: CompletionItemKind.Module,
-  [ts.ScriptElementKind.string]: CompletionItemKind.Text
+  [ts.ScriptElementKind.string]: CompletionItemKind.Text,
 };
 
 function toCompletionItemKind(kind: ts.ScriptElementKind | string): CompletionItemKind {
@@ -48,7 +55,10 @@ class JsDocumentHost implements ts.LanguageServiceHost {
   private text = '';
   private version = 0;
 
-  constructor(private readonly fileName: string, private readonly baseUrl: string | undefined) {}
+  constructor(
+    private readonly fileName: string,
+    private readonly baseUrl: string | undefined,
+  ) {}
 
   updateContent(newText: string): void {
     if (newText !== this.text) {
@@ -88,7 +98,7 @@ class JsDocumentHost implements ts.LanguageServiceHost {
       moduleResolution: ts.ModuleResolutionKind.NodeJs,
       baseUrl: this.baseUrl,
       lib: ['lib.dom.d.ts', 'lib.es2022.d.ts'],
-      jsx: ts.JsxEmit.None
+      jsx: ts.JsxEmit.None,
     };
   }
 
@@ -111,15 +121,34 @@ interface JsEntry {
   service: ts.LanguageService;
 }
 
-export function getJSMode(rootUri: string | undefined): JSLanguageMode {
+export function getJSMode(roots: string | string[] | undefined): JSLanguageMode {
   const documents = new Map<string, JsEntry>();
-  const baseUrl = rootUri ? uriToPath(rootUri) : undefined;
+  const rootList = (Array.isArray(roots) ? roots : roots ? [roots] : []).filter(
+    (r) => typeof r === 'string' && r.length > 0,
+  );
+  const fallbackBaseUrl = rootList.length > 0 ? uriToPath(rootList[0]) : undefined;
+
+  function baseUrlFor(uri: string): string | undefined {
+    const target = uriToPath(uri);
+    let best: string | undefined;
+    let bestLen = -1;
+    for (const root of rootList) {
+      const rootPath = uriToPath(root);
+      const rel = path.relative(rootPath, target);
+      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+      if (rootPath.length > bestLen) {
+        best = rootPath;
+        bestLen = rootPath.length;
+      }
+    }
+    return best ?? fallbackBaseUrl;
+  }
 
   function getEntry(uri: string): JsEntry {
     let entry = documents.get(uri);
     if (!entry) {
       const fileName = `${uriToPath(uri)}.embedded.js`;
-      const host = new JsDocumentHost(fileName, baseUrl);
+      const host = new JsDocumentHost(fileName, baseUrlFor(uri));
       const service = ts.createLanguageService(host, ts.createDocumentRegistry());
       entry = { fileName, host, service };
       documents.set(uri, entry);
@@ -144,7 +173,7 @@ export function getJSMode(rootUri: string | undefined): JSLanguageMode {
       const items: CompletionItem[] = info.entries.map((e) => ({
         label: e.name,
         kind: toCompletionItemKind(e.kind),
-        sortText: e.sortText
+        sortText: e.sortText,
       }));
 
       return CompletionList.create(items, false);
@@ -156,7 +185,8 @@ export function getJSMode(rootUri: string | undefined): JSLanguageMode {
 
       const fileName = entry.fileName;
       const jsRegions = regions.regions.filter((r) => r.languageId === 'javascript');
-      const inRegion = (offset: number): boolean => jsRegions.some((r) => r.start <= offset && offset < r.end);
+      const inRegion = (offset: number): boolean =>
+        jsRegions.some((r) => r.start <= offset && offset < r.end);
 
       const syntactic = entry.service.getSyntacticDiagnostics(fileName);
       const semantic = entry.service.getSemanticDiagnostics(fileName);
@@ -173,10 +203,16 @@ export function getJSMode(rootUri: string | undefined): JSLanguageMode {
         seen.add(key);
 
         diagnostics.push({
-          range: Range.create(embedded.positionAt(d.start), embedded.positionAt(d.start + d.length)),
+          range: Range.create(
+            embedded.positionAt(d.start),
+            embedded.positionAt(d.start + d.length),
+          ),
           message,
-          severity: d.category === ts.DiagnosticCategory.Error ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
-          source: 'typescript'
+          severity:
+            d.category === ts.DiagnosticCategory.Error
+              ? DiagnosticSeverity.Error
+              : DiagnosticSeverity.Warning,
+          source: 'typescript',
         });
       }
       return diagnostics;
@@ -186,6 +222,6 @@ export function getJSMode(rootUri: string | undefined): JSLanguageMode {
     },
     dispose() {
       documents.clear();
-    }
+    },
   };
 }

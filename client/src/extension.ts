@@ -1,17 +1,19 @@
 import * as path from 'path';
 import {
+  commands,
   ConfigurationTarget,
   ExtensionContext,
   Position,
   SnippetString,
+  TextEditor,
   window,
-  workspace
+  workspace,
 } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  TransportKind
+  TransportKind,
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient;
@@ -23,7 +25,7 @@ let client: LanguageClient;
  */
 export function mergeIncludeLanguages(
   current: Record<string, string> | undefined,
-  add: Record<string, string>
+  add: Record<string, string>,
 ): Record<string, string> {
   return { ...(current ?? {}), ...add };
 }
@@ -39,8 +41,8 @@ export function activate(context: ExtensionContext): void {
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
-      options: { execArgv: ['--nolazy', '--inspect=6009'] }
-    }
+      options: { execArgv: ['--nolazy', '--inspect=6009'] },
+    },
   };
 
   const clientOptions: LanguageClientOptions = {
@@ -48,28 +50,146 @@ export function activate(context: ExtensionContext): void {
     synchronize: {
       // Re-run Go-side analysis when .go files change, not just template files,
       // since FuncMap/gotype context lives in the surrounding Go source.
-      fileEvents: workspace.createFileSystemWatcher('**/*.{go,gotmpl,gtpl,tmpl,gohtml}')
+      fileEvents: workspace.createFileSystemWatcher('**/*.{go,gotmpl,gtpl,tmpl,gohtml}'),
     },
     initializationOptions: {
-      goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls')
-    }
+      goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls'),
+      templateRoots: workspace.getConfiguration('goTemplate').get<string[]>('templateRoots', []),
+      extraFuncs: workspace
+        .getConfiguration('goTemplate')
+        .get<Record<string, unknown>>('extraFuncs', {}),
+    },
   };
 
   client = new LanguageClient(
     'goTemplateLanguageServer',
     'Go Template Language Server',
     serverOptions,
-    clientOptions
+    clientOptions,
   );
 
-  client.start();
+  void client.start();
 
   promptForEmmet(context);
   wireTagComplete(context);
+  wireEmmetContext(context);
+  wireConfigurationSync(context);
 }
 
 export function deactivate(): Thenable<void> | undefined {
   return client?.stop();
+}
+
+/**
+ * Port of the server's `scanActions` (server/src/templateParser.ts) so the
+ * client can detect `{{ }}` action spans synchronously for the Emmet context
+ * key. Honors trim markers, quoted string literals, and block comments so an
+ * embedded `}}` inside them doesn't end the span early.
+ */
+function scanActionSpans(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  const len = text.length;
+  let i = 0;
+  while (i < len) {
+    const start = text.indexOf('{{', i);
+    if (start === -1) break;
+
+    let j = start + 2;
+    let end = -1;
+    while (j < len) {
+      const ch = text[j];
+      if (ch === '"' || ch === '`') {
+        const quote = ch;
+        j++;
+        while (j < len && text[j] !== quote) {
+          if (quote === '"' && text[j] === '\\') j++;
+          j++;
+        }
+        j++;
+        continue;
+      }
+      if (ch === '/' && text[j + 1] === '*') {
+        j += 2;
+        while (j < len && !(text[j] === '*' && text[j + 1] === '/')) j++;
+        j += 2;
+        continue;
+      }
+      if (ch === '}' && text[j + 1] === '}') {
+        end = j + 2;
+        break;
+      }
+      j++;
+    }
+
+    if (end === -1) {
+      spans.push({ start, end: len });
+      break;
+    }
+
+    spans.push({ start, end });
+    i = end;
+  }
+  return spans;
+}
+
+function isInsideGoAction(text: string, offset: number): boolean {
+  return scanActionSpans(text).some((span) => span.start <= offset && offset <= span.end);
+}
+
+function updateEmmetContext(editor: TextEditor | undefined): void {
+  let inAction = false;
+  if (editor && editor.document.languageId === 'gotmpl') {
+    const text = editor.document.getText();
+    inAction = editor.selections.some((selection) =>
+      isInsideGoAction(text, editor.document.offsetAt(selection.active)),
+    );
+  }
+  void commands.executeCommand('setContext', 'gotmpl.inAction', inAction);
+}
+
+/**
+ * §2.9 — forwards `goTemplate.templateRoots` changes to the server so the
+ * define/block index re-scans live instead of waiting for a reload.
+ */
+function wireConfigurationSync(context: ExtensionContext): void {
+  context.subscriptions.push(
+    workspace.onDidChangeConfiguration((e) => {
+      if (
+        !e.affectsConfiguration('goTemplate.templateRoots') &&
+        !e.affectsConfiguration('goTemplate.extraFuncs')
+      ) {
+        return;
+      }
+      void client.sendNotification('workspace/didChangeConfiguration', {
+        settings: {
+          goTemplate: {
+            templateRoots: workspace
+              .getConfiguration('goTemplate')
+              .get<string[]>('templateRoots', []),
+            extraFuncs: workspace
+              .getConfiguration('goTemplate')
+              .get<Record<string, unknown>>('extraFuncs', {}),
+          },
+        },
+      });
+    }),
+  );
+}
+
+/**
+ * §4.4a — scope-aware Emmet disabling. Emmet is language-mode based, so the
+ * TextMate scope can't stop it inside `{{ }}`. Instead we track the cursor and
+ * publish a `gotmpl.inAction` context key that a keybinding (package.json) uses
+ * to fall back to a plain Tab inside actions.
+ */
+function wireEmmetContext(context: ExtensionContext): void {
+  updateEmmetContext(window.activeTextEditor);
+
+  context.subscriptions.push(
+    window.onDidChangeTextEditorSelection(() => updateEmmetContext(window.activeTextEditor)),
+    workspace.onDidChangeTextDocument(() => updateEmmetContext(window.activeTextEditor)),
+    window.onDidChangeActiveTextEditor((editor) => updateEmmetContext(editor)),
+  );
 }
 
 /**
@@ -95,7 +215,7 @@ function promptForEmmet(context: ExtensionContext): void {
       void emmetConfig.update(
         'includeLanguages',
         mergeIncludeLanguages(include, { gotmpl: 'html' }),
-        ConfigurationTarget.Global
+        ConfigurationTarget.Global,
       );
     });
 }
@@ -120,7 +240,7 @@ function wireTagComplete(context: ExtensionContext): void {
       client
         .sendRequest<string | null>('html/tag', {
           textDocument: { uri: doc.uri.toString() },
-          position
+          position,
         })
         .then(
           (result) => {
@@ -129,8 +249,8 @@ function wireTagComplete(context: ExtensionContext): void {
             if (!editor || editor.document.uri.toString() !== doc.uri.toString()) return;
             void editor.insertSnippet(new SnippetString(result), position);
           },
-          () => undefined
+          () => undefined,
         );
-    })
+    }),
   );
 }

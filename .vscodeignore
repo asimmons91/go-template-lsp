@@ -8,7 +8,7 @@ node_modules/**
 # Build inputs (source, not shipped in the .vsix)
 docs/**
 fixtures/**
-funcmap/**
+indexer/**
 scripts/**
 client/src/**
 client/tsconfig.json
