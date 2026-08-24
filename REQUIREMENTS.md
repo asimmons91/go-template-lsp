@@ -12,7 +12,7 @@ VSCode has no equivalent to GoLand's Go template support. Specifically:
   `{{template "name" .}}` across files, or offers completion for custom functions
   registered via `template.FuncMap{}`.
 - No existing VSCode extension gives real HTML/CSS/JS intellisense (tag completion,
-  inline `<style>` completion, inline `<script>` completion) inside a `.gohtml`/`.tmpl`
+  inline `<style>` completion, inline `<script>` completion) inside a `.gotmpl`/`.tmpl`
   file, because the `{{ }}` syntax interleaved with HTML confuses the standard
   HTML/CSS/JS language services if fed to them unmodified.
 - GoLand solves all of the above today via a `gotype:` comment convention, built-in
@@ -61,6 +61,35 @@ VSCode client extension that closes these gaps.
   that synthetic file. `gopls` is the source of truth for all real Go type
   information; this project does not reimplement `go/types`.
 
+### 4.1a Autocomplete while authoring the `gotype:` comment itself
+The `gotype:` comment is the single input the whole feature in §4.1 depends on,
+so typing it correctly needs to be as easy as using it afterward — completion
+should not stop at the boundary of the comment.
+- **Input:** cursor position inside the value portion of a
+  `{{- /* gotype: <cursor here> */ -}}` comment, detected the same way the
+  server already detects "cursor is inside a `{{ }}` action" (§5.1), narrowed
+  further to comments matching the `gotype:` prefix.
+- **Behavior:**
+  - While typing the package-path segment (before any `.`), offer completion
+    of importable package paths, scoped to the current module and its direct
+    dependencies — the same universe `goimports`/`gopls` would offer for an
+    import statement.
+  - Once a valid package path is present (typed, or accepted from the list
+    above) and the user types `.`, offer completion of that package's
+    exported struct type names only — non-struct exported identifiers
+    (functions, constants, interfaces, non-struct types) are filtered out,
+    since they're not valid `gotype:` targets.
+  - Validate the final value: if it doesn't resolve to a real, importable
+    struct type, surface a diagnostic on the comment itself (distinct from
+    the "no `gotype:` found" case, so a typo reads as "type not found" rather
+    than silently falling back to no type information at all).
+- **Mechanism:** package-path completion can reuse `gopls`'s own workspace
+  package listing (the same data backing its import-statement completion);
+  struct-name completion for a given package is a `workspace/symbol` query
+  against `gopls`, filtered client-side to `SymbolKind.Struct` results scoped
+  to that package's import path. No new indexing infrastructure is needed
+  beyond what `gopls` already exposes.
+
 ### 4.2 FuncMap-aware completion
 - **Input:** `template.FuncMap{...}` composite literals and `.Funcs(...)` calls
   anywhere in the workspace's Go source.
@@ -101,7 +130,7 @@ VSCode client extension that closes these gaps.
 ### 5.1 Pipeline (per file, on every relevant request)
 
 ```
-.gohtml source
+.gotmpl source
       │
       ▼
 masking pass ── replace every {{ }} span with a same-width, syntax-safe
@@ -152,7 +181,11 @@ The server spawns `gopls serve` (path configurable via
 `goTemplate.goplsPath`), communicates over stdio using `vscode-jsonrpc`'s
 message connection primitives, and sends standard `textDocument/didOpen` /
 `textDocument/completion` / `textDocument/definition` requests against the
-synthetic transpiled Go file it maintains per template file.
+synthetic transpiled Go file it maintains per template file. Completion inside
+the `gotype:` comment itself (§4.1a) is a separate, simpler request path that
+doesn't go through the transpiler at all — it queries `gopls` directly for
+package listings and `workspace/symbol` results, since there's no template
+pipeline to translate at that point, just a string being typed.
 
 ## 6. Project structure
 
@@ -161,7 +194,7 @@ go-template-lsp/
 ├── package.json                  # extension manifest, language/grammar contribution
 ├── language-configuration.json   # brackets, comments for {{ }}
 ├── syntaxes/
-│   └── gohtml.tmLanguage.json    # TextMate grammar, injects into text.html.basic
+│   └── gotmpl.tmLanguage.json    # TextMate grammar, injects into text.html.basic
 ├── client/
 │   ├── package.json
 │   ├── tsconfig.json
@@ -182,7 +215,7 @@ go-template-lsp/
             └── goplsClient.ts    # spawns + speaks LSP to gopls over stdio
 ```
 
-(`package.json`, `language-configuration.json`, `syntaxes/gohtml.tmLanguage.json`,
+(`package.json`, `language-configuration.json`, `syntaxes/gotmpl.tmLanguage.json`,
 `client/package.json`, `client/tsconfig.json`, and `client/src/extension.ts` already
 exist in this repo as a starting skeleton. Everything under `server/` is still to
 be written.)
@@ -224,14 +257,16 @@ be written.)
 ## 9. Milestones
 
 1. **M1 — Skeleton compiles and activates.** Client spawns server; server
-   responds to `initialize`; `.gohtml` files get syntax highlighting via the
+   responds to `initialize`; `.gotmpl` files get syntax highlighting via the
    TextMate grammar. (Files in §6 marked "already exist" get this far.)
 2. **M2 — HTML/CSS/JS delegation.** Masking pass + region splitter working;
    HTML/CSS/JS completion functional on a test fixture with no Go actions at all
    (validates the embedding pipeline independent of the Go side).
 3. **M3 — Go template completion via gopls.** `gotype:` comment parsing,
    transpilation, `goplsClient` wired up; `.Field` completion works on a single
-   flat struct (no nesting/ranges yet).
+   flat struct (no nesting/ranges yet). Include completion of the `gotype:`
+   value itself (§4.1a) in this milestone — it's a prerequisite for the rest
+   of the feature to be usable without hand-typing fully qualified type paths.
 4. **M4 — Nested types, `range`, `with`, `$var` bindings** in the transpiler.
 5. **M5 — FuncMap completion.**
 6. **M6 — define/block/template cross-file index + navigation.**
