@@ -14,6 +14,32 @@ import { isTemplateFileUri } from './templateNameService';
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 let languageModes: ReturnType<typeof getLanguageModes>;
+const pendingValidations = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Debounced diagnostics pass: gathers diagnostics from every language delegate
+ * (Go template syntax, HTML tag balance, CSS, JS/TS) and publishes them merged
+ * into a single list for the file.
+ */
+function validateTextDocument(textDocument: TextDocument): void {
+  if (!languageModes) return;
+  const uri = textDocument.uri;
+  const existing = pendingValidations.get(uri);
+  if (existing) clearTimeout(existing);
+
+  pendingValidations.set(
+    uri,
+    setTimeout(async () => {
+      pendingValidations.delete(uri);
+      try {
+        const diagnostics = await languageModes.doDiagnostics(textDocument);
+        connection.sendDiagnostics({ uri, diagnostics });
+      } catch {
+        connection.sendDiagnostics({ uri, diagnostics: [] });
+      }
+    }, 150)
+  );
+}
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const goplsPath = (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
@@ -63,9 +89,18 @@ connection.onReferences(async (params) => {
   return (await result.mode.doReferences(document, params.position, result.regions, params.context)) ?? null;
 });
 
-documents.onDidOpen((e) => languageModes?.onDocumentOpened(e.document));
-documents.onDidChangeContent((e) => languageModes?.onDocumentChanged(e.document));
+documents.onDidOpen((e) => {
+  languageModes?.onDocumentOpened(e.document);
+  validateTextDocument(e.document);
+});
+documents.onDidChangeContent((e) => {
+  languageModes?.onDocumentChanged(e.document);
+  validateTextDocument(e.document);
+});
 documents.onDidClose((e) => {
+  const pending = pendingValidations.get(e.document.uri);
+  if (pending) clearTimeout(pending);
+  pendingValidations.delete(e.document.uri);
   languageModes?.onDocumentClosed(e.document);
   languageModes?.onDocumentRemoved(e.document);
 });

@@ -1,9 +1,9 @@
-import { CompletionItem, CompletionItemKind, CompletionList, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Location, Position, Range, ReferenceContext } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
 import { parseGotypeComment } from '../gotype';
-import { parseTemplate, findPipelineAtOffset } from '../templateParser';
+import { parseTemplate, findPipelineAtOffset, validateTemplateSyntax } from '../templateParser';
 import { scanTemplateDirectives } from '../templateDirectives';
 import { parsePipeline } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
@@ -90,6 +90,16 @@ export function getGoTemplateMode(
       await templateNames.ensureReady();
       const refs = templateNames.getReferences(directive.name);
       return context.includeDeclaration ? refs.concat(templateNames.getDefinitions(directive.name)) : refs;
+    },
+
+    doDiagnostics(document: TextDocument): Diagnostic[] {
+      const text = document.getText();
+      return validateTemplateSyntax(text).map((issue) => ({
+        range: Range.create(document.positionAt(issue.start), document.positionAt(issue.end)),
+        message: issue.message,
+        severity: DiagnosticSeverity.Error,
+        source: 'go-template'
+      }));
     },
 
     dispose() {

@@ -1,4 +1,4 @@
-import { CompletionList, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
+import { CompletionList, Diagnostic, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { EmbeddedLanguageId, GoTemplateDocument, getDocumentRegions, getLanguageAtOffset } from './documentRegions';
 import { getHTMLMode } from './modes/htmlMode';
@@ -18,6 +18,7 @@ export interface LanguageMode {
     regions: GoTemplateDocument,
     context: ReferenceContext
   ): Location[] | undefined | Promise<Location[] | undefined>;
+  doDiagnostics?(document: TextDocument, regions: GoTemplateDocument): Diagnostic[] | Promise<Diagnostic[]>;
 }
 
 export interface ModeAtPosition {
@@ -27,6 +28,7 @@ export interface ModeAtPosition {
 
 export interface LanguageModes {
   getModeAtPosition(document: TextDocument, position: Position): ModeAtPosition | undefined;
+  doDiagnostics(document: TextDocument): Promise<Diagnostic[]>;
   onDocumentRemoved(document: TextDocument): void;
   onDocumentOpened(document: TextDocument): void;
   onDocumentChanged(document: TextDocument): void;
@@ -58,6 +60,15 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
       const mode = modes[languageId];
       if (!mode) return undefined;
       return { mode, regions };
+    },
+    async doDiagnostics(document) {
+      const regions = getDocumentRegions(document);
+      const all: Diagnostic[] = [];
+      for (const mode of Object.values(modes)) {
+        if (!mode?.doDiagnostics) continue;
+        all.push(...(await mode.doDiagnostics(document, regions)));
+      }
+      return all;
     },
     onDocumentRemoved(document) {
       jsMode.onDocumentRemoved(document);

@@ -11,6 +11,11 @@ export function getCSSMode(): LanguageMode {
       const embedded = getEmbeddedDocument(document, regions, 'css');
       const stylesheet = cssLanguageService.parseStylesheet(embedded);
       return cssLanguageService.doComplete(embedded, position, stylesheet);
+    },
+    doDiagnostics(document, regions) {
+      const embedded = getEmbeddedDocument(document, regions, 'css');
+      const stylesheet = cssLanguageService.parseStylesheet(embedded);
+      return cssLanguageService.doValidation(embedded, stylesheet);
     }
   };
 }

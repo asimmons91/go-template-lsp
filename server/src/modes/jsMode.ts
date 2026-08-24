@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as ts from 'typescript';
-import { CompletionItem, CompletionItemKind, CompletionList } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Range } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { getEmbeddedDocument } from '../documentRegions';
@@ -138,6 +138,38 @@ export function getJSMode(): JSLanguageMode {
       }));
 
       return CompletionList.create(items, false);
+    },
+    doDiagnostics(document, regions) {
+      const embedded = getEmbeddedDocument(document, regions, 'javascript');
+      const entry = getEntry(document.uri);
+      entry.host.updateContent(embedded.getText());
+
+      const fileName = `${document.uri}.embedded.js`;
+      const jsRegions = regions.regions.filter((r) => r.languageId === 'javascript');
+      const inRegion = (offset: number): boolean => jsRegions.some((r) => r.start <= offset && offset < r.end);
+
+      const syntactic = entry.service.getSyntacticDiagnostics(fileName);
+      const semantic = entry.service.getSemanticDiagnostics(fileName);
+
+      const seen = new Set<string>();
+      const diagnostics: Diagnostic[] = [];
+      for (const d of [...syntactic, ...semantic]) {
+        if (d.start === undefined || d.length === undefined) continue;
+        if (!inRegion(d.start)) continue;
+
+        const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
+        const key = `${d.start}:${d.length}:${message}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        diagnostics.push({
+          range: Range.create(embedded.positionAt(d.start), embedded.positionAt(d.start + d.length)),
+          message,
+          severity: d.category === ts.DiagnosticCategory.Error ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+          source: 'typescript'
+        });
+      }
+      return diagnostics;
     },
     onDocumentRemoved(document) {
       documents.delete(document.uri);

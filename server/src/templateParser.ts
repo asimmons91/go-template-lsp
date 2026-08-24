@@ -126,7 +126,7 @@ function firstKeyword(content: string): { keyword: string; rest: string } {
   return { keyword: '', rest: content };
 }
 
-type Classification =
+export type Classification =
   | { type: 'comment' }
   | { type: 'end' }
   | { type: 'else' }
@@ -139,7 +139,7 @@ type Classification =
   | { type: 'var'; name: string; assign: 'define' | 'assign'; pipeline: string }
   | { type: 'action'; pipeline: string };
 
-function classify(content: string): Classification {
+export function classify(content: string): Classification {
   const trimmed = stripTrimMarkers(content);
   if (trimmed.startsWith('/*')) return { type: 'comment' };
 
@@ -318,6 +318,54 @@ export function parseTemplate(text: string): TemplateNode[] {
   }
 
   return parseBody();
+}
+
+export interface TemplateSyntaxIssue {
+  start: number;
+  end: number;
+  message: string;
+}
+
+const BLOCK_OPENERS = new Set<string>(['if', 'range', 'with', 'define', 'block']);
+
+/**
+ * Lightweight structural validator for a template: reports unterminated `{{`
+ * actions, stray `{{end}}`s, and blocks (`if`/`range`/`with`/`define`/`block`)
+ * left open at EOF. Unlike `parseTemplate` (which auto-closes unclosed blocks so
+ * the transpiled Go stays balanced), this intentionally *reports* those holes so
+ * they can surface as editor diagnostics.
+ */
+export function validateTemplateSyntax(text: string): TemplateSyntaxIssue[] {
+  const issues: TemplateSyntaxIssue[] = [];
+  const stack: { label: string; start: number; end: number }[] = [];
+
+  for (const span of scanActions(text)) {
+    if (!text.slice(span.start, span.end).endsWith('}}')) {
+      issues.push({ start: span.start, end: span.end, message: 'Unterminated template action (missing "}}").' });
+      continue;
+    }
+
+    const c = classify(span.content);
+    if (BLOCK_OPENERS.has(c.type)) {
+      stack.push({ label: c.type, start: span.start, end: span.end });
+    } else if (c.type === 'end') {
+      if (stack.length === 0) {
+        issues.push({ start: span.start, end: span.end, message: 'Unexpected {{end}}.' });
+      } else {
+        stack.pop();
+      }
+    } else if (c.type === 'else' || c.type === 'elseif') {
+      if (stack.length === 0) {
+        issues.push({ start: span.start, end: span.end, message: `Unexpected {{${c.type}}}.` });
+      }
+    }
+  }
+
+  for (const open of stack) {
+    issues.push({ start: open.start, end: open.end, message: `Unclosed {{${open.label}}} block.` });
+  }
+
+  return issues;
 }
 
 /**
