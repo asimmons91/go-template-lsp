@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -58,7 +59,106 @@ func isTemplateType(t types.Type) bool {
 type executeIndexer struct {
 	pkg          *packages.Package
 	templateVars map[types.Object]ast.Expr
+	embedVars    map[types.Object][]embedFile
 	sites        []ExecuteSite
+}
+
+// embedFile is one real file captured by a `//go:embed` directive: its absolute
+// path on disk plus its path relative to the embed root (the source file's
+// directory), which is what ParseFS glob patterns match against.
+type embedFile struct {
+	abs string
+	rel string
+}
+
+// isEmbedFSType reports whether t is the named type embed.FS.
+func isEmbedFSType(t types.Type) bool {
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj != nil && obj.Name() == "FS" && obj.Pkg() != nil && obj.Pkg().Path() == "embed"
+}
+
+// collectEmbedVars scans the package for `var X embed.FS` declarations carrying
+// a `//go:embed` directive, resolving each pattern to the real files it matches
+// (relative to the declaring file's directory) and keying them by the variable
+// object so a later ParseFS call can be traced back to concrete files.
+func (ix *executeIndexer) collectEmbedVars() {
+	ix.embedVars = map[types.Object][]embedFile{}
+	for _, file := range ix.pkg.Syntax {
+		dir := filepath.Dir(ix.pkg.Fset.Position(file.Pos()).Filename)
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			patterns := embedPatterns(gen.Doc)
+			if len(patterns) == 0 {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, name := range vs.Names {
+					obj := ix.pkg.TypesInfo.Defs[name]
+					if obj == nil || !isEmbedFSType(obj.Type()) {
+						continue
+					}
+					for _, pattern := range patterns {
+						ix.embedVars[obj] = append(ix.embedVars[obj], expandEmbedPattern(dir, pattern)...)
+					}
+				}
+			}
+		}
+	}
+}
+
+// embedPatterns extracts the space-separated patterns from a comment group's
+// `//go:embed` directives, ignoring any other comments attached to the decl.
+func embedPatterns(doc *ast.CommentGroup) []string {
+	if doc == nil {
+		return nil
+	}
+	var patterns []string
+	for _, c := range doc.List {
+		text := c.Text
+		text = strings.TrimPrefix(text, "//")
+		text = strings.TrimPrefix(text, "/*")
+		text = strings.TrimSuffix(text, "*/")
+		text = strings.TrimSpace(text)
+		if !strings.HasPrefix(text, "go:embed") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(text, "go:embed"))
+		if rest == "" {
+			continue
+		}
+		patterns = append(patterns, strings.Fields(rest)...)
+	}
+	return patterns
+}
+
+// expandEmbedPattern expands one `//go:embed` pattern against the source file's
+// directory, returning the matched files with their embed-relative paths.
+func expandEmbedPattern(dir, pattern string) []embedFile {
+	fullPattern := filepath.Join(dir, filepath.FromSlash(pattern))
+	matches, err := doublestar.FilepathGlob(fullPattern)
+	if err != nil {
+		return nil
+	}
+	out := make([]embedFile, 0, len(matches))
+	for _, m := range matches {
+		rel, err := filepath.Rel(dir, m)
+		if err != nil {
+			continue
+		}
+		out = append(out, embedFile{abs: m, rel: filepath.ToSlash(rel)})
+	}
+	return out
 }
 
 // templateVarInits maps each package-level `*template.Template` variable to the
@@ -223,9 +323,16 @@ func (ix *executeIndexer) templateValue(expr ast.Expr) (files []string, name str
 			}
 			return files, "", true
 		case "ParseFS":
-			// embed.FS contents can't be mapped to real files here (deferred to
-			// M12). For the method form, keep whatever the receiver already
-			// traced to; for the package form there is nothing to add.
+			if files, ok := ix.embedFilesFor(e.Args); ok {
+				if isMethod(fn) {
+					recv, _, _ := ix.templateValue(sel.X)
+					files = append(recv, files...)
+				}
+				return files, "", true
+			}
+			// Unknown FS (e.g. a dynamically constructed one): for the method
+			// form, keep whatever the receiver already traced to; for the
+			// package form there is nothing to add.
 			if !isMethod(fn) {
 				return nil, "", false
 			}
@@ -242,6 +349,50 @@ func (ix *executeIndexer) templateValue(expr ast.Expr) (files []string, name str
 func isMethod(fn *types.Func) bool {
 	sig, ok := fn.Type().(*types.Signature)
 	return ok && sig.Recv() != nil
+}
+
+// embedFilesFor resolves a `ParseFS(fs, "pattern")` call: the first argument is
+// an embed.FS variable (collected by collectEmbedVars) and the second is a glob
+// pattern matched against the embed-relative paths. Returns the matching real
+// files, or !ok when the FS variable is unknown or the pattern is non-constant.
+func (ix *executeIndexer) embedFilesFor(args []ast.Expr) ([]string, bool) {
+	if len(args) != 2 {
+		return nil, false
+	}
+	obj := exprObject(args[0], ix.pkg.TypesInfo)
+	if obj == nil {
+		return nil, false
+	}
+	pattern := stringValue(args[1], ix.pkg.TypesInfo)
+	if pattern == "" {
+		return nil, false
+	}
+	entries := ix.embedVars[obj]
+	if entries == nil {
+		return nil, false
+	}
+	files := make([]string, 0, len(entries))
+	for _, ef := range entries {
+		if ok, _ := doublestar.Match(pattern, ef.rel); ok {
+			files = append(files, ef.abs)
+		}
+	}
+	return files, len(files) > 0
+}
+
+// exprObject returns the types.Object an identifier or selector expression
+// refers to (uses first, then defs), or nil.
+func exprObject(expr ast.Expr, info *types.Info) types.Object {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if o := info.Uses[e]; o != nil {
+			return o
+		}
+		return info.Defs[e]
+	case *ast.SelectorExpr:
+		return info.Uses[e.Sel]
+	}
+	return nil
 }
 
 // parseFileArgs resolves `ParseFiles("a.html", "b.html", ...)` arguments to

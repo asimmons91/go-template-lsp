@@ -54,6 +54,7 @@ export function activate(context: ExtensionContext): void {
     },
     initializationOptions: {
       goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls'),
+      templateRoots: workspace.getConfiguration('goTemplate').get<string[]>('templateRoots', []),
     },
   };
 
@@ -69,6 +70,7 @@ export function activate(context: ExtensionContext): void {
   promptForEmmet(context);
   wireTagComplete(context);
   wireEmmetContext(context);
+  wireConfigurationSync(context);
 }
 
 export function deactivate(): Thenable<void> | undefined {
@@ -140,6 +142,27 @@ function updateEmmetContext(editor: TextEditor | undefined): void {
     );
   }
   void commands.executeCommand('setContext', 'gotmpl.inAction', inAction);
+}
+
+/**
+ * §2.9 — forwards `goTemplate.templateRoots` changes to the server so the
+ * define/block index re-scans live instead of waiting for a reload.
+ */
+function wireConfigurationSync(context: ExtensionContext): void {
+  context.subscriptions.push(
+    workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration('goTemplate.templateRoots')) return;
+      void client.sendNotification('workspace/didChangeConfiguration', {
+        settings: {
+          goTemplate: {
+            templateRoots: workspace
+              .getConfiguration('goTemplate')
+              .get<string[]>('templateRoots', []),
+          },
+        },
+      });
+    }),
+  );
 }
 
 /**

@@ -26,6 +26,7 @@ import { getGoIndexRunner } from './goIndex';
 import { getExecuteSiteIndex } from './inference/executeSiteIndex';
 import { TemplateNameService } from './templateNameService';
 import { getAutoescapeDiagnostics } from './autoescape/classifier';
+import { normalizeRoots } from './workspace';
 
 export interface LanguageMode {
   getId(): EmbeddedLanguageId;
@@ -97,20 +98,30 @@ export interface LanguageModes {
   onDocumentClosed(document: TextDocument): void;
   onTemplateFileEvent(uri: string, type: number): void;
   invalidateFuncMap(): void;
+  /** Re-scans the template index with a new set of template-root patterns. */
+  reconfigure(templateRoots: string[]): void;
   dispose(): void;
 }
 
-export function getLanguageModes(goplsPath: string, rootUri: string | undefined): LanguageModes {
+export function getLanguageModes(
+  goplsPath: string,
+  roots: string | string[] | undefined,
+  templateRoots?: string[],
+): LanguageModes {
+  const rootList = normalizeRoots(roots);
+  const workspaceFolders = rootList.map((uri) => ({ uri, name: uri }));
+  const rootUri = rootList[0];
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
-  const jsMode = getJSMode(rootUri);
-  const goIndexRunner = getGoIndexRunner(rootUri);
+  const jsMode = getJSMode(rootList);
+  const goIndexRunner = getGoIndexRunner(rootList);
   const funcMapIndexer = getFuncMapIndexer(goIndexRunner);
-  const templateNames = new TemplateNameService(rootUri);
+  const templateNames = new TemplateNameService(rootList, templateRoots);
   const executeSiteIndex = getExecuteSiteIndex(goIndexRunner, templateNames);
   const goTemplateMode = getGoTemplateMode(
     goplsPath,
     rootUri,
+    workspaceFolders,
     funcMapIndexer,
     templateNames,
     executeSiteIndex,
@@ -162,6 +173,10 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
       templateNames.onFileEvent(uri, type);
     },
     invalidateFuncMap() {
+      goIndexRunner.invalidate();
+    },
+    reconfigure(templateRoots) {
+      templateNames.rescan(templateRoots);
       goIndexRunner.invalidate();
     },
     dispose() {

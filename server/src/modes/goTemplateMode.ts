@@ -41,7 +41,7 @@ import {
 import { scanTemplateDirectives, TemplateNameDirective } from '../templateDirectives';
 import { parsePipeline, PipelineCommand } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
-import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
+import { createGoplsClient, GoplsClient, WorkspaceFolder } from '../gopls/goplsClient';
 import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
 import { TemplateNameService } from '../templateNameService';
 
@@ -52,11 +52,12 @@ export interface GoTemplateLanguageMode extends LanguageMode {
 export function getGoTemplateMode(
   goplsPath: string,
   rootUri: string | undefined,
+  workspaceFolders: WorkspaceFolder[] | undefined,
   funcMapIndexer: FuncMapIndexer,
   templateNames: TemplateNameService,
   executeSiteIndex: ExecuteSiteIndex,
 ): GoTemplateLanguageMode {
-  const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
+  const client: GoplsClient = createGoplsClient(goplsPath, rootUri, workspaceFolders);
 
   return {
     getId: () => 'gotemplate',

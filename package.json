@@ -52,6 +52,14 @@
           "type": "string",
           "default": "gopls",
           "description": "Path to the gopls binary used for Go-side type checking inside template actions."
+        },
+        "goTemplate.templateRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns (relative to each workspace folder) limiting which directories are scanned for template files by the define/block index. Empty means scan every workspace folder."
         }
       }
     },

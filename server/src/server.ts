@@ -44,10 +44,13 @@ function validateTextDocument(textDocument: TextDocument): void {
 }
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
-  const goplsPath =
-    (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
-  const rootUri = params.rootUri ?? params.workspaceFolders?.[0]?.uri ?? undefined;
-  languageModes = getLanguageModes(goplsPath, rootUri);
+  const options = params.initializationOptions as
+    { goplsPath?: string; templateRoots?: string[] } | undefined;
+  const goplsPath = options?.goplsPath ?? 'gopls';
+  const roots = (params.workspaceFolders ?? []).map((folder) => folder.uri);
+  if (roots.length === 0 && params.rootUri) roots.push(params.rootUri);
+  const templateRoots = options?.templateRoots ?? [];
+  languageModes = getLanguageModes(goplsPath, roots, templateRoots);
 
   return {
     capabilities: {
@@ -185,6 +188,14 @@ connection.onDidChangeWatchedFiles((params) => {
       languageModes.onTemplateFileEvent(change.uri, change.type);
     }
   }
+});
+
+connection.onDidChangeConfiguration((change) => {
+  const settings = (change.settings ?? {}) as {
+    goTemplate?: { templateRoots?: string[] };
+  };
+  const templateRoots = settings.goTemplate?.templateRoots ?? [];
+  languageModes?.reconfigure(templateRoots);
 });
 
 documents.listen(connection);

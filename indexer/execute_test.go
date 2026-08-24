@@ -34,6 +34,27 @@ func TestScanExecuteSites(t *testing.T) {
 	}
 }
 
+func TestScanEmbedFS(t *testing.T) {
+	dir, err := filepath.Abs(filepath.Join("..", "fixtures", "embed-fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := scan(dir)
+
+	pageFile := filepath.Join(dir, "templates", "page.gohtml")
+	detailFile := filepath.Join(dir, "templates", "detail.gohtml")
+
+	pageTypes := typesForFile(res, pageFile)
+	if len(pageTypes) != 1 || pageTypes[0] != "example.com/embedfixture.User" {
+		t.Fatalf("page.gohtml types = %v, want [example.com/embedfixture.User]", pageTypes)
+	}
+
+	detailTypes := typesForFile(res, detailFile)
+	if len(detailTypes) != 1 || detailTypes[0] != "example.com/embedfixture.User" {
+		t.Fatalf("detail.gohtml types = %v, want [example.com/embedfixture.User]", detailTypes)
+	}
+}
+
 func typesForFile(res Result, file string) []string {
 	seen := map[string]bool{}
 	var out []string

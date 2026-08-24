@@ -47,7 +47,16 @@ function offsetToPosition(text: string, offset: number): { line: number; charact
  * and request failures resolve to an empty completion list rather than throwing,
  * so a missing/broken gopls degrades gracefully instead of crashing the server.
  */
-export function createGoplsClient(goplsPath: string, rootUri: string | undefined): GoplsClient {
+export interface WorkspaceFolder {
+  uri: string;
+  name: string;
+}
+
+export function createGoplsClient(
+  goplsPath: string,
+  rootUri: string | undefined,
+  workspaceFolders?: WorkspaceFolder[],
+): GoplsClient {
   let childProcess: ChildProcessWithoutNullStreams | undefined;
   let connection: MessageConnection | undefined;
   let starting: Promise<MessageConnection | undefined> | undefined;
@@ -92,7 +101,8 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
 
       await conn.sendRequest('initialize', {
         processId: process.pid ?? null,
-        rootUri: rootUri ?? null,
+        rootUri: rootUri ?? workspaceFolders?.[0]?.uri ?? null,
+        workspaceFolders: workspaceFolders ?? null,
         capabilities: {},
       });
       void conn.sendNotification('initialized', {});

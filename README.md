@@ -47,6 +47,16 @@ disambiguate.
 - A working `go`/`gopls` installation on your `PATH`, or set
   `goTemplate.goplsPath` to an explicit gopls binary.
 
+## Configuration
+
+- `goTemplate.goplsPath` — path to the gopls binary used for Go-side type
+  checking inside template actions.
+- `goTemplate.templateRoots` — glob patterns (relative to each workspace
+  folder) limiting which directories are scanned for template files by the
+  define/block index. Empty (the default) scans every workspace folder. For
+  example, `["templates/**", "views/**"]` skips unrelated `.html`/`.gotmpl`
+  files elsewhere in a large repo.
+
 ## Enabling Emmet
 
 Emmet expansion for `.gotmpl` files requires the `emmet.includeLanguages`

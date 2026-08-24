@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 import { Location, Range } from 'vscode-languageserver/node';
 import { scanTemplateDirectives } from './templateDirectives';
 
@@ -8,6 +9,27 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'out', 'dist', '.vscode', 'bi
 
 function uriToPath(uri: string): string {
   return decodeURIComponent(uri.replace(/^file:\/\//, ''));
+}
+
+/**
+ * The static directory prefix of a glob pattern — everything up to the first
+ * glob metacharacter, then trimmed back to the last `/`. Used to decide whether
+ * a directory could contain a matching path (e.g. `templates/**` -> `templates`).
+ * Returns '' for a leading `**` (matches anywhere).
+ */
+function staticPrefix(pattern: string): string {
+  let i = 0;
+  while (i < pattern.length && !'*?[]{}!'.includes(pattern[i])) i++;
+  const prefix = pattern.slice(0, i);
+  const slash = prefix.lastIndexOf('/');
+  return slash === -1 ? '' : prefix.slice(0, slash);
+}
+
+/** Whether directory `rel` (root-relative, posix) could contain a match for `pattern`. */
+function dirDescendable(rel: string, pattern: string): boolean {
+  const prefix = staticPrefix(pattern);
+  if (prefix === '' || rel === '') return true;
+  return rel === prefix || rel.startsWith(`${prefix}/`) || prefix.startsWith(`${rel}/`);
 }
 
 function pathToUri(p: string): string {
@@ -36,9 +58,10 @@ export function isTemplateFileUri(uri: string): boolean {
 
 /**
  * Owns the workspace-wide define/block/template index. At construction it walks
- * the workspace root for template files and indexes them; open documents overlay
- * (and win over) the on-disk baseline via `indexDocument`, and `onFileEvent` /
- * `onDocumentClosed` keep it fresh as files change on disk.
+ * each workspace root (optionally restricted by `templateRoots` glob patterns)
+ * for template files and indexes them; open documents overlay (and win over) the
+ * on-disk baseline via `indexDocument`, and `onFileEvent` / `onDocumentClosed`
+ * keep it fresh as files change on disk.
  */
 export class TemplateNameService {
   private definitions = new Map<string, Location[]>();
@@ -46,7 +69,10 @@ export class TemplateNameService {
   private files = new Set<string>();
   private ready: Promise<void>;
 
-  constructor(private rootUri: string | undefined) {
+  constructor(
+    private roots: string | string[] | undefined,
+    private templateRoots?: string[],
+  ) {
     this.ready = this.scanWorkspace();
   }
 
@@ -54,10 +80,29 @@ export class TemplateNameService {
     await this.ready;
   }
 
+  /**
+   * Re-scans the workspace with a new set of template root patterns. Roots are
+   * unchanged (workspace folders don't move mid-session); only the glob filter
+   * is updated and the index rebuilt.
+   */
+  rescan(templateRoots?: string[]): void {
+    if (templateRoots !== undefined) this.templateRoots = templateRoots;
+    this.definitions.clear();
+    this.references.clear();
+    this.files.clear();
+    this.ready = this.scanWorkspace();
+  }
+
+  private rootList(): string[] {
+    const list = Array.isArray(this.roots) ? this.roots : this.roots ? [this.roots] : [];
+    return list.filter((r) => typeof r === 'string' && r.length > 0);
+  }
+
   private scanWorkspace(): Promise<void> {
-    if (!this.rootUri) return Promise.resolve();
     const files: string[] = [];
-    this.walk(uriToPath(this.rootUri), files);
+    for (const root of this.rootList()) {
+      this.walk(uriToPath(root), uriToPath(root), files);
+    }
     for (const file of files) {
       try {
         this.indexDocument(pathToUri(file), fs.readFileSync(file, 'utf8'));
@@ -68,7 +113,24 @@ export class TemplateNameService {
     return Promise.resolve();
   }
 
-  private walk(dir: string, out: string[]): void {
+  private relPosix(root: string, full: string): string {
+    const rel = path.relative(root, full);
+    return rel.split(path.sep).join('/');
+  }
+
+  private fileMatches(rel: string): boolean {
+    const patterns = this.templateRoots;
+    if (!patterns || patterns.length === 0) return true;
+    return patterns.some((p) => minimatch(rel, p, { dot: true }));
+  }
+
+  private dirMatches(rel: string): boolean {
+    const patterns = this.templateRoots;
+    if (!patterns || patterns.length === 0) return true;
+    return patterns.some((p) => dirDescendable(rel, p));
+  }
+
+  private walk(root: string, dir: string, out: string[]): void {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -79,10 +141,12 @@ export class TemplateNameService {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
-        this.walk(full, out);
+        if (!this.dirMatches(this.relPosix(root, full))) continue;
+        this.walk(root, full, out);
       } else if (
         entry.isFile() &&
-        TEMPLATE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+        TEMPLATE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) &&
+        this.fileMatches(this.relPosix(root, full))
       ) {
         out.push(full);
       }

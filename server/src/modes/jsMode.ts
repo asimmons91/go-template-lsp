@@ -121,15 +121,34 @@ interface JsEntry {
   service: ts.LanguageService;
 }
 
-export function getJSMode(rootUri: string | undefined): JSLanguageMode {
+export function getJSMode(roots: string | string[] | undefined): JSLanguageMode {
   const documents = new Map<string, JsEntry>();
-  const baseUrl = rootUri ? uriToPath(rootUri) : undefined;
+  const rootList = (Array.isArray(roots) ? roots : roots ? [roots] : []).filter(
+    (r) => typeof r === 'string' && r.length > 0,
+  );
+  const fallbackBaseUrl = rootList.length > 0 ? uriToPath(rootList[0]) : undefined;
+
+  function baseUrlFor(uri: string): string | undefined {
+    const target = uriToPath(uri);
+    let best: string | undefined;
+    let bestLen = -1;
+    for (const root of rootList) {
+      const rootPath = uriToPath(root);
+      const rel = path.relative(rootPath, target);
+      if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+      if (rootPath.length > bestLen) {
+        best = rootPath;
+        bestLen = rootPath.length;
+      }
+    }
+    return best ?? fallbackBaseUrl;
+  }
 
   function getEntry(uri: string): JsEntry {
     let entry = documents.get(uri);
     if (!entry) {
       const fileName = `${uriToPath(uri)}.embedded.js`;
-      const host = new JsDocumentHost(fileName, baseUrl);
+      const host = new JsDocumentHost(fileName, baseUrlFor(uri));
       const service = ts.createLanguageService(host, ts.createDocumentRegistry());
       entry = { fileName, host, service };
       documents.set(uri, entry);

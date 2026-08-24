@@ -78,6 +78,7 @@ func scan(dir string) Result {
 		funcMapVars := funcMapVarLiterals(pkg)
 		docs := funcDocComments(pkg)
 		ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
+		ix.collectEmbedVars()
 		for _, file := range pkg.Syntax {
 			ast.Inspect(file, func(n ast.Node) bool {
 				switch node := n.(type) {

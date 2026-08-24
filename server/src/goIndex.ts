@@ -262,14 +262,15 @@ function parseIndex(stdout: string): GoIndexResult {
  * result so a missing/broken Go toolchain degrades gracefully. Shared by the
  * FuncMap and execute-site inference services so the workspace is scanned once.
  */
-export function getGoIndexRunner(rootUri: string | undefined): GoIndexRunner {
+export function getGoIndexRunner(roots: string | string[] | undefined): GoIndexRunner {
   let cache: GoIndexResult | undefined;
   let pending: Promise<GoIndexResult> | undefined;
 
-  function build(): Promise<GoIndexResult> {
-    if (!rootUri) return Promise.resolve({ functions: [], executeSites: [] });
-    const workspaceDir = uriToPath(rootUri);
+  const rootList = (Array.isArray(roots) ? roots : roots ? [roots] : []).filter(
+    (r) => typeof r === 'string' && r.length > 0,
+  );
 
+  function runOne(workspaceDir: string): Promise<GoIndexResult> {
     return new Promise((resolve) => {
       const binary = prebuiltBinary();
       const child = binary
@@ -297,6 +298,41 @@ export function getGoIndexRunner(rootUri: string | undefined): GoIndexRunner {
         resolve(parseIndex(stdout));
       });
     });
+  }
+
+  /**
+   * Merges per-folder index runs into one workspace-wide result. FuncMap entries
+   * are first-wins by name (matching the single-root semantics), and execute
+   * sites are concatenated then de-duplicated by target + type.
+   */
+  function merge(results: GoIndexResult[]): GoIndexResult {
+    const functions = new Map<string, FuncMapEntry>();
+    for (const r of results) {
+      for (const fn of r.functions) {
+        if (!functions.has(fn.name)) functions.set(fn.name, fn);
+      }
+    }
+
+    const seen = new Set<string>();
+    const executeSites: ExecuteSite[] = [];
+    for (const r of results) {
+      for (const site of r.executeSites) {
+        const key = site.name
+          ? `name:${site.name}|${site.type.importPath}.${site.type.typeName}`
+          : `files:${(site.files ?? []).join(',')}|${site.type.importPath}.${site.type.typeName}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        executeSites.push(site);
+      }
+    }
+
+    return { functions: [...functions.values()], executeSites };
+  }
+
+  function build(): Promise<GoIndexResult> {
+    if (rootList.length === 0) return Promise.resolve({ functions: [], executeSites: [] });
+    const dirs = rootList.map(uriToPath);
+    return Promise.all(dirs.map(runOne)).then(merge);
   }
 
   return {
