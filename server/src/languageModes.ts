@@ -4,10 +4,11 @@ import { EmbeddedLanguageId, GoTemplateDocument, getDocumentRegions, getLanguage
 import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
+import { getGoTemplateMode } from './modes/goTemplateMode';
 
 export interface LanguageMode {
   getId(): EmbeddedLanguageId;
-  doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): CompletionList;
+  doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): CompletionList | Promise<CompletionList>;
 }
 
 export interface ModeAtPosition {
@@ -21,15 +22,17 @@ export interface LanguageModes {
   dispose(): void;
 }
 
-export function getLanguageModes(): LanguageModes {
+export function getLanguageModes(goplsPath: string, rootUri: string | undefined): LanguageModes {
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
   const jsMode = getJSMode();
+  const goTemplateMode = getGoTemplateMode(goplsPath, rootUri);
 
   const modes: Partial<Record<EmbeddedLanguageId, LanguageMode>> = {
     html: htmlMode,
     css: cssMode,
-    javascript: jsMode
+    javascript: jsMode,
+    gotemplate: goTemplateMode
   };
 
   return {
@@ -45,6 +48,7 @@ export function getLanguageModes(): LanguageModes {
     },
     dispose() {
       jsMode.dispose();
+      goTemplateMode.dispose();
     }
   };
 }

@@ -12,9 +12,13 @@ import { getLanguageModes } from './languageModes';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
-const languageModes = getLanguageModes();
+let languageModes: ReturnType<typeof getLanguageModes>;
 
-connection.onInitialize((_params: InitializeParams): InitializeResult => {
+connection.onInitialize((params: InitializeParams): InitializeResult => {
+  const goplsPath = (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
+  const rootUri = params.rootUri ?? params.workspaceFolders?.[0]?.uri ?? undefined;
+  languageModes = getLanguageModes(goplsPath, rootUri);
+
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -26,7 +30,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
   };
 });
 
-connection.onCompletion((params): CompletionList | null => {
+connection.onCompletion(async (params): Promise<CompletionList | null> => {
   const document = documents.get(params.textDocument.uri);
   if (!document) return null;
 

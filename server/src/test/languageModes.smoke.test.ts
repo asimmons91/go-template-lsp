@@ -11,20 +11,20 @@ function makeDocument(uri: string, textWithCursor: string): { document: TextDocu
   return { document, position: document.positionAt(cursor) };
 }
 
-test('html tag completion outside any embedded region', () => {
-  const languageModes = getLanguageModes();
+test('html tag completion outside any embedded region', async () => {
+  const languageModes = getLanguageModes('gopls', undefined);
   const { document, position } = makeDocument('file:///a.gohtml', '<html><body><d|</body></html>');
 
   const result = languageModes.getModeAtPosition(document, position);
   assert.ok(result, 'expected a language mode to be resolved');
 
-  const list = result!.mode.doComplete(document, position, result!.regions);
-  const labels = list.items.map((item) => item.label);
+  const list = await result!.mode.doComplete(document, position, result!.regions);
+  const labels = list.items.map((item: { label: string }) => item.label);
   assert.ok(labels.includes('div'), `expected 'div' among HTML tag completions, got: ${labels.join(', ')}`);
 });
 
-test('css property completion inside <style>', () => {
-  const languageModes = getLanguageModes();
+test('css property completion inside <style>', async () => {
+  const languageModes = getLanguageModes('gopls', undefined);
   const { document, position } = makeDocument(
     'file:///b.gohtml',
     '<html><head><style>.card { co| }</style></head><body></body></html>'
@@ -33,13 +33,13 @@ test('css property completion inside <style>', () => {
   const result = languageModes.getModeAtPosition(document, position);
   assert.ok(result, 'expected a language mode to be resolved');
 
-  const list = result!.mode.doComplete(document, position, result!.regions);
-  const labels = list.items.map((item) => item.label);
+  const list = await result!.mode.doComplete(document, position, result!.regions);
+  const labels = list.items.map((item: { label: string }) => item.label);
   assert.ok(labels.includes('color'), `expected 'color' among CSS completions, got: ${labels.join(', ')}`);
 });
 
-test('js member completion inside <script>', () => {
-  const languageModes = getLanguageModes();
+test('js member completion inside <script>', async () => {
+  const languageModes = getLanguageModes('gopls', undefined);
   const { document, position } = makeDocument(
     'file:///c.gohtml',
     '<html><body><script>console.l|</script></body></html>'
@@ -48,7 +48,7 @@ test('js member completion inside <script>', () => {
   const result = languageModes.getModeAtPosition(document, position);
   assert.ok(result, 'expected a language mode to be resolved');
 
-  const list = result!.mode.doComplete(document, position, result!.regions);
-  const labels = list.items.map((item) => item.label);
+  const list = await result!.mode.doComplete(document, position, result!.regions);
+  const labels = list.items.map((item: { label: string }) => item.label);
   assert.ok(labels.includes('log'), `expected 'log' among JS completions, got: ${labels.join(', ')}`);
 });
