@@ -27,8 +27,9 @@ type Function struct {
 }
 
 type Result struct {
-	Functions []Function `json:"functions"`
-	Errors    []string   `json:"errors"`
+	Functions    []Function    `json:"functions"`
+	ExecuteSites []ExecuteSite `json:"executeSites"`
+	Errors       []string      `json:"errors"`
 }
 
 func main() {
@@ -51,7 +52,7 @@ func main() {
 // collected whether they appear standalone or as the argument to a `.Funcs(...)`
 // call on a `*template.Template`.
 func scan(dir string) Result {
-	result := Result{Functions: []Function{}, Errors: []string{}}
+	result := Result{Functions: []Function{}, ExecuteSites: []ExecuteSite{}, Errors: []string{}}
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
 			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports |
@@ -65,11 +66,13 @@ func scan(dir string) Result {
 	}
 
 	byName := map[string]Function{}
+	sites := []ExecuteSite{}
 	for _, pkg := range pkgs {
 		if pkg.Types == nil || pkg.TypesInfo == nil {
 			continue
 		}
 		funcMapVars := funcMapVarLiterals(pkg)
+		ix := &executeIndexer{pkg: pkg, templateVars: templateVarInits(pkg)}
 		for _, file := range pkg.Syntax {
 			ast.Inspect(file, func(n ast.Node) bool {
 				switch node := n.(type) {
@@ -82,8 +85,11 @@ func scan(dir string) Result {
 				}
 				return true
 			})
+			ix.scan(file)
 		}
+		sites = append(sites, ix.sites...)
 	}
+	result.ExecuteSites = dedupeExecuteSites(sites)
 
 	names := make([]string, 0, len(byName))
 	for name := range byName {

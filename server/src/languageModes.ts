@@ -17,7 +17,9 @@ import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
 import { getGoTemplateMode } from './modes/goTemplateMode';
-import { getFuncMapIndexer } from './funcmap/funcMapIndex';
+import { getFuncMapIndexer } from './indexer/funcMapIndex';
+import { getGoIndexRunner } from './goIndex';
+import { getExecuteSiteIndex } from './inference/executeSiteIndex';
 import { TemplateNameService } from './templateNameService';
 import { getAutoescapeDiagnostics } from './autoescape/classifier';
 
@@ -77,9 +79,17 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
   const htmlMode = getHTMLMode();
   const cssMode = getCSSMode();
   const jsMode = getJSMode(rootUri);
-  const funcMapIndexer = getFuncMapIndexer(rootUri);
+  const goIndexRunner = getGoIndexRunner(rootUri);
+  const funcMapIndexer = getFuncMapIndexer(goIndexRunner);
   const templateNames = new TemplateNameService(rootUri);
-  const goTemplateMode = getGoTemplateMode(goplsPath, rootUri, funcMapIndexer, templateNames);
+  const executeSiteIndex = getExecuteSiteIndex(goIndexRunner, templateNames);
+  const goTemplateMode = getGoTemplateMode(
+    goplsPath,
+    rootUri,
+    funcMapIndexer,
+    templateNames,
+    executeSiteIndex,
+  );
 
   const modes: Partial<Record<EmbeddedLanguageId, LanguageMode>> = {
     html: htmlMode,
@@ -127,7 +137,7 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
       templateNames.onFileEvent(uri, type);
     },
     invalidateFuncMap() {
-      funcMapIndexer.invalidate();
+      goIndexRunner.invalidate();
     },
     dispose() {
       jsMode.dispose();

@@ -1,4 +1,4 @@
-module gotmpl-funcmap
+module gotmpl-indexer
 
 go 1.27.0
 

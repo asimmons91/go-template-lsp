@@ -43,6 +43,7 @@ export function isTemplateFileUri(uri: string): boolean {
 export class TemplateNameService {
   private definitions = new Map<string, Location[]>();
   private references = new Map<string, Location[]>();
+  private files = new Set<string>();
   private ready: Promise<void>;
 
   constructor(private rootUri: string | undefined) {
@@ -90,6 +91,7 @@ export class TemplateNameService {
 
   indexDocument(uri: string, text: string): void {
     this.removeDocument(uri);
+    this.files.add(uri);
     for (const d of scanTemplateDirectives(text)) {
       const range = Range.create(
         offsetToPosition(text, d.quoteStart),
@@ -108,6 +110,7 @@ export class TemplateNameService {
   }
 
   removeDocument(uri: string): void {
+    this.files.delete(uri);
     for (const map of [this.definitions, this.references]) {
       for (const [name, locs] of map) {
         const kept = locs.filter((l) => l.uri !== uri);
@@ -139,6 +142,23 @@ export class TemplateNameService {
 
   getAllNames(): string[] {
     return [...this.definitions.keys()];
+  }
+
+  /**
+   * Returns the URI(s) whose on-disk basename equals `name`, for resolving a
+   * root template name (e.g. `ParseFiles("page.gohtml")` names its root template
+   * `page.gohtml`) back to its file during execute-site type inference.
+   */
+  getFilesByBasename(name: string): string[] {
+    const out: string[] = [];
+    for (const uri of this.files) {
+      try {
+        if (path.basename(uriToPath(uri)) === name) out.push(uri);
+      } catch {
+        // Unparseable URI — skip.
+      }
+    }
+    return out;
   }
 
   getDefinitions(name: string): Location[] {

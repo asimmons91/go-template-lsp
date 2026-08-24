@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { transpileTemplate } from '../transpiler';
-import { FuncMapEntry } from '../funcmap/funcMapIndex';
+import { FuncMapEntry } from '../indexer/funcMapIndex';
 
 const gotype = { importPath: 'example.com/gotypefixture/model', typeName: 'User' };
 const uri = 'file:///tmp/project/views/page.gohtml';

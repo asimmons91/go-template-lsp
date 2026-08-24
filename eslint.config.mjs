@@ -4,7 +4,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'node_modules/**', 'bin/**', 'funcmap/**', 'fixtures/**', '*.vsix'],
+    ignores: ['out/**', 'node_modules/**', 'bin/**', 'indexer/**', 'fixtures/**', '*.vsix'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

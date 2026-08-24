@@ -3,7 +3,7 @@ import * as path from 'path';
 import { GotypeDescriptor } from './gotype';
 import { parseTemplate, TemplateNode } from './templateParser';
 import { parsePipeline, readStringLiteralEnd } from './pipeline';
-import { FuncMapEntry } from './funcmap/funcMapIndex';
+import { FuncMapEntry } from './indexer/funcMapIndex';
 
 const PACKAGE_CLAUSE = /^\s*package\s+(\w+)/m;
 

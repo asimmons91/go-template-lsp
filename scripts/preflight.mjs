@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const required = [
-  'bin/gotmpl-funcmap-darwin-amd64',
-  'bin/gotmpl-funcmap-darwin-arm64',
-  'bin/gotmpl-funcmap-linux-amd64',
-  'bin/gotmpl-funcmap-linux-arm64',
-  'bin/gotmpl-funcmap-windows-amd64.exe',
+  'bin/gotmpl-indexer-darwin-amd64',
+  'bin/gotmpl-indexer-darwin-arm64',
+  'bin/gotmpl-indexer-linux-amd64',
+  'bin/gotmpl-indexer-linux-arm64',
+  'bin/gotmpl-indexer-windows-amd64.exe',
   'server/out/server.js',
   'client/out/extension.js',
 ];

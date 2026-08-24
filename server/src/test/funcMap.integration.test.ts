@@ -5,7 +5,8 @@ import * as path from 'path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { CompletionList } from 'vscode-languageserver/node';
 import { getLanguageModes } from '../languageModes';
-import { getFuncMapIndexer } from '../funcmap/funcMapIndex';
+import { getFuncMapIndexer } from '../indexer/funcMapIndex';
+import { getGoIndexRunner } from '../goIndex';
 
 const fixtureRoot = path.join(__dirname, '..', '..', '..', 'fixtures', 'gotype-fixture');
 const funcMapFile = path.join(fixtureRoot, 'views', 'funcmap.gohtml');
@@ -29,7 +30,7 @@ async function completeAt(token: string): Promise<CompletionList> {
 }
 
 test('indexes FuncMap entries with signatures from the fixture', async () => {
-  const indexer = getFuncMapIndexer(`file://${fixtureRoot}`);
+  const indexer = getFuncMapIndexer(getGoIndexRunner(`file://${fixtureRoot}`));
   const index = await indexer.getIndex();
 
   const upper = index.get('upper');

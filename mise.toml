@@ -7,9 +7,9 @@ description = "Compile and test the TypeScript client/server"
 run = "npm test"
 
 [tasks.test-go]
-description = "Test the Go funcmap indexer"
+description = "Test the Go workspace indexer"
 run = "go test ./..."
-dir = "funcmap"
+dir = "indexer"
 
 [tasks.test]
 description = "Test both Go and Typescript"
@@ -18,16 +18,16 @@ run = [
     "mise run test-ts"
 ]
 
-[tasks.build-funcmap]
-description = "Cross-compile the Go funcmap indexer for Windows, macOS, and Linux"
-dir = "funcmap"
+[tasks.build-indexer]
+description = "Cross-compile the Go workspace indexer (FuncMap + execute-site inference) for Windows, macOS, and Linux"
+dir = "indexer"
 run = [
     "mkdir -p ../bin",
-    "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-linux-amd64 .",
-    "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../bin/gotmpl-funcmap-linux-arm64 .",
-    "CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-darwin-amd64 .",
-    "CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../bin/gotmpl-funcmap-darwin-arm64 .",
-    "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-windows-amd64.exe ."
+    "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/gotmpl-indexer-linux-amd64 .",
+    "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../bin/gotmpl-indexer-linux-arm64 .",
+    "CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../bin/gotmpl-indexer-darwin-amd64 .",
+    "CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../bin/gotmpl-indexer-darwin-arm64 .",
+    "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../bin/gotmpl-indexer-windows-amd64.exe ."
 ]
 
 [tasks.build-ts]
@@ -47,8 +47,8 @@ description = "Verify source formatting with Prettier"
 run = "npm run format:check"
 
 [tasks.build]
-description = "Lint, format-check, and build the Go funcmap binaries and TypeScript client/server"
-depends = ["build-funcmap", "build-ts", "lint", "format-check"]
+description = "Lint, format-check, and build the Go workspace indexer binaries and TypeScript client/server"
+depends = ["build-indexer", "build-ts", "lint", "format-check"]
 
 [tasks.package]
 description = "Package the extension into a .vsix including pre-built binaries"

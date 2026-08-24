@@ -35,6 +35,12 @@ struct passed to `Execute()`:
 The `gotype:` value itself is completed as you type (package path, then exported
 struct names).
 
+If a template has no `gotype:` comment, the extension infers the root type from
+`tmpl.Execute(w, X)` / `tmpl.ExecuteTemplate(w, "name", X)` call sites in the
+workspace. When a template is executed with more than one distinct type, a
+non-blocking hint is shown instead of guessing; add a `gotype:` comment to
+disambiguate.
+
 ## Requirements
 
 - Node.js 18+
@@ -58,7 +64,7 @@ enable manually, add to your settings:
 ## Building
 
 ```sh
-mise run build        # compile TS client/server + cross-compile the funcmap indexer
+mise run build        # compile TS client/server + cross-compile the workspace indexer
 mise run test         # run Go and TypeScript tests
 mise run package      # build a .vsix
 ```
@@ -72,6 +78,10 @@ mise run package      # build a .vsix
 - Split-tag conditionals (`{{if .X}}<div>{{end}}...{{if .X}}</div>{{end}}`) are
   unresolvable by static masking; unclosed-tag diagnostics for such tags are
   suppressed.
+- Execute-site type inference is best-effort: it only traces template
+  construction within a single package (`ParseFiles`/`ParseGlob`/`Must`/`New`
+  chains), requires the data argument to be a named struct (or pointer to one),
+  and can't match `embed.FS` + `ParseFS` contents to real files yet.
 
 See `REQUIREMENTS.md` for the full design and `REQUIREMENTS_V2.md` for deferred
 work.

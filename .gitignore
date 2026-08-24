@@ -19,10 +19,10 @@
 # Test binary, built with `go test -c`
 *.test
 
-# FuncMap indexer binary (built via `go build .` in funcmap/)
-funcmap/gotmpl-funcmap
+# Workspace indexer binary (built via `go build .` in indexer/)
+indexer/gotmpl-indexer
 
-# Cross-compiled FunMap indexer binaries (built via `mise run build-funcmap`)
+# Cross-compiled workspace indexer binaries (built via `mise run build-indexer`)
 bin/
 
 # Output of the go coverage tool, specifically when used with LiteIDE

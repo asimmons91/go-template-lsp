@@ -13,7 +13,8 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
-import { parseGotypeComment } from '../gotype';
+import { GotypeDescriptor, parseGotypeComment } from '../gotype';
+import { ExecuteSiteIndex, InferredType } from '../inference/executeSiteIndex';
 import {
   completePackagePath,
   completeStructNames,
@@ -28,7 +29,7 @@ import { scanTemplateDirectives } from '../templateDirectives';
 import { parsePipeline } from '../pipeline';
 import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
-import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../funcmap/funcMapIndex';
+import { BUILTINS, FuncMapEntry, FuncMapIndexer } from '../indexer/funcMapIndex';
 import { TemplateNameService } from '../templateNameService';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
@@ -40,6 +41,7 @@ export function getGoTemplateMode(
   rootUri: string | undefined,
   funcMapIndexer: FuncMapIndexer,
   templateNames: TemplateNameService,
+  executeSiteIndex: ExecuteSiteIndex,
 ): GoTemplateLanguageMode {
   const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
 
@@ -75,7 +77,7 @@ export function getGoTemplateMode(
         return CompletionList.create(items, true);
       }
 
-      const gotype = parseGotypeComment(text);
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return CompletionList.create([], false);
 
       const nodes = parseTemplate(text);
@@ -113,7 +115,7 @@ export function getGoTemplateMode(
         return templateNames.getDefinitions(directive.name);
       }
 
-      const gotype = parseGotypeComment(text);
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return undefined;
 
       const nodes = parseTemplate(text);
@@ -151,7 +153,7 @@ export function getGoTemplateMode(
       const text = document.getText();
       const offset = document.offsetAt(position);
 
-      const gotype = parseGotypeComment(text);
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
       if (!gotype) return undefined;
 
       const nodes = parseTemplate(text);
@@ -175,8 +177,20 @@ export function getGoTemplateMode(
         source: 'go-template',
       }));
 
-      const gotype = parseGotypeComment(text);
-      if (!gotype) return diagnostics;
+      const binding = await resolveGotype(document, executeSiteIndex);
+      const gotype = binding.gotype;
+      if (!gotype) {
+        if (binding.inferred.length > 1) {
+          const names = binding.inferred.map((t) => `${t.importPath}.${t.typeName}`).join(', ');
+          diagnostics.push({
+            range: Range.create({ line: 0, character: 0 }, { line: 0, character: 0 }),
+            message: `Template executed with multiple types (${names}); add a gotype: comment to disambiguate.`,
+            severity: DiagnosticSeverity.Hint,
+            source: 'go-template',
+          });
+        }
+        return diagnostics;
+      }
 
       if (!(await client.health())) return diagnostics;
 
@@ -259,6 +273,33 @@ function positionToOffset(text: string, position: Position): number {
     line++;
   }
   return lineStart + position.character;
+}
+
+interface ResolvedGotype {
+  gotype?: GotypeDescriptor;
+  /** All inferred types (empty when a `gotype:` comment is present). */
+  inferred: InferredType[];
+}
+
+/**
+ * Resolves the root type for a template file: the explicit `gotype:` comment
+ * always wins, otherwise fall back to execute-site inference (§2.2). `inferred`
+ * carries the full inferred list so diagnostics can surface an ambiguity hint
+ * instead of silently picking one when multiple distinct types are found.
+ */
+async function resolveGotype(
+  document: TextDocument,
+  executeSiteIndex: ExecuteSiteIndex,
+): Promise<ResolvedGotype> {
+  const comment = parseGotypeComment(document.getText());
+  if (comment) return { gotype: comment, inferred: [] };
+
+  const inferred = await executeSiteIndex.resolveGotype(document.uri);
+  if (inferred.length === 1) {
+    const first = inferred[0];
+    return { gotype: { importPath: first.importPath, typeName: first.typeName }, inferred };
+  }
+  return { inferred };
 }
 
 const TEMPLATE_BUILTIN_NAMES = new Set(BUILTINS.map((b) => b.name));
