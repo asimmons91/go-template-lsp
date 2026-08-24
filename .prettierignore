@@ -1,0 +1,7 @@
+out/
+node_modules/
+bin/
+funcmap/
+fixtures/
+*.vsix
+package-lock.json

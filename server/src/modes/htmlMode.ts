@@ -38,7 +38,7 @@ function getHTMLDiagnostics(rawText: string, maskedDocument: TextDocument): Diag
           range: Range.create(maskedDocument.positionAt(start), maskedDocument.positionAt(end)),
           message: `Unclosed tag "${node.tag}".`,
           severity: DiagnosticSeverity.Warning,
-          source: 'go-template'
+          source: 'go-template',
         });
       }
     }
@@ -74,6 +74,6 @@ export function getHTMLMode(): LanguageMode {
     doTagComplete(_document, position, regions) {
       const htmlDocument = htmlLanguageService.parseHTMLDocument(regions.maskedDocument);
       return htmlLanguageService.doTagComplete(regions.maskedDocument, position, htmlDocument);
-    }
+    },
   };
 }

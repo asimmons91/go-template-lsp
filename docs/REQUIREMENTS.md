@@ -49,6 +49,7 @@ VSCode client extension that closes these gaps.
 ## 4. Functional requirements
 
 ### 4.1 Go template type intelligence
+
 - **Input:** a `{{- /* gotype: pkg/path.StructName */ -}}` comment at the top of
   the file (same syntax GoLand uses).
 - **Behavior:** typing `.` inside an action completes to the fields/methods of the
@@ -62,9 +63,11 @@ VSCode client extension that closes these gaps.
   information; this project does not reimplement `go/types`.
 
 ### 4.1a Autocomplete while authoring the `gotype:` comment itself
+
 The `gotype:` comment is the single input the whole feature in §4.1 depends on,
 so typing it correctly needs to be as easy as using it afterward — completion
 should not stop at the boundary of the comment.
+
 - **Input:** cursor position inside the value portion of a
   `{{- /* gotype: <cursor here> */ -}}` comment, detected the same way the
   server already detects "cursor is inside a `{{ }}` action" (§5.1), narrowed
@@ -94,6 +97,7 @@ should not stop at the boundary of the comment.
   infrastructure is needed beyond what `gopls` already exposes.
 
 ### 4.2 FuncMap-aware completion
+
 - **Input:** `template.FuncMap{...}` composite literals and `.Funcs(...)` calls
   anywhere in the workspace's Go source.
 - **Behavior:** inside a pipeline (e.g. `{{ myFunc .X | otherFunc }}`), offer
@@ -103,6 +107,7 @@ should not stop at the boundary of the comment.
   every `FuncMap` literal's key → function signature.
 
 ### 4.3 define/block/template navigation
+
 - **Input:** every `{{define "name"}}` and `{{block "name" .}}` in the workspace.
 - **Behavior:** `{{template "name" .}}` name strings get completion (offering all
   known names), go-to-definition (jumping to the matching `define`/`block`), and
@@ -111,14 +116,17 @@ should not stop at the boundary of the comment.
   updated on file save, keyed by template name → declaration location(s).
 
 ### 4.4 Embedded HTML completion
+
 - Tag names, attribute names, and attribute value completion (e.g. boolean
   attributes, `<input type="...">` enums) anywhere outside a `{{ }}` action.
 
 ### 4.4a Emmet abbreviation expansion
+
 Unlike every other requirement in this document, this one is **not served by
 the language server at all** — VSCode's Emmet support is a built-in client
 feature that reads the document's TextMate scopes directly, so this is really
 a packaging/configuration requirement rather than a completion provider.
+
 - **Input:** the user typing an Emmet abbreviation (e.g. `ul>li*3`,
   `div.card>h2+p`) outside a `{{ }}` action and pressing Tab.
 - **Behavior:** abbreviations expand to full HTML exactly as they would in a
@@ -143,18 +151,20 @@ a packaging/configuration requirement rather than a completion provider.
     `gotmpl.inAction` context key, and a contributed keybinding (`tab` →
     plain `tab` when `gotmpl.inAction`) makes Tab fall through to a normal
     tab inside an action while leaving Emmet expansion intact outside. Emmet
-    *abbreviation suggestions* have no per-position or per-language opt-out,
+    _abbreviation suggestions_ have no per-position or per-language opt-out,
     so they are disabled globally via `emmet.showAbbreviationSuggestions:
-    false` (an accepted asymmetry; the LSP's own HTML tag/attribute
+false` (an accepted asymmetry; the LSP's own HTML tag/attribute
     completion still covers the non-`{{ }}` regions).
 
 ### 4.4b HTML tag auto-closing
+
 Typing `<p>` should auto-insert `</p>` immediately after the cursor, and
 typing `</` inside a closing-tag context should auto-complete to the nearest
 unclosed tag's name — standard editor behavior in `.html` files today, and
 worth calling out separately from §4.4/§4.4a because **it uses a third,
 different mechanism from either of them**, and (unlike Emmet) it does need
 server-side code, not just configuration.
+
 - **Input:** the user typing `>` to close an opening tag, or `/` immediately
   after `<`.
 - **Behavior:** insert the matching closing tag as a snippet right after the
@@ -184,13 +194,16 @@ server-side code, not just configuration.
     does require both sides of the client/server boundary to cooperate.
 
 ### 4.5 Embedded CSS completion
+
 - Property names, values, and selectors inside `<style>...</style>` blocks.
 
 ### 4.6 Embedded JS/TS completion
+
 - Standard JS/TS completion inside `<script>...</script>` blocks, including
   globals and any imports resolvable from the workspace.
 
 ### 4.7 Diagnostics
+
 - Merge diagnostics from the Go template checker, HTML, CSS, and JS/TS delegates
   into one list per file.
 - Suppress HTML "unclosed tag" diagnostics specifically for tags whose
@@ -229,6 +242,7 @@ delegate           delegate        delegate        delegate
 ```
 
 ### 5.2 Process/language boundaries
+
 - **VSCode extension host** — TypeScript. Only responsibility: spawn the language
   server and wire up `vscode-languageclient`.
 - **Language server** — TypeScript/Node.js. Hosts the masking/region-splitting
@@ -236,28 +250,31 @@ delegate           delegate        delegate        delegate
   (`vscode-html-languageservice`, `vscode-css-languageservice`, the `typescript`
   npm package's `ts.LanguageService`).
 - **gopls** — separate child process, spoken to over LSP-over-stdio, with the
-  language server acting as the *client* in that exchange (role-reversed from
+  language server acting as the _client_ in that exchange (role-reversed from
   its relationship with VSCode).
 - **FuncMap/define-block indexer** — can live in the same Node process (shelling
   out to `go list`/`go/packages` via a small Go helper binary) or as its own
   child process; not yet decided, see §11.
 
 ### 5.2a Emmet is outside this pipeline entirely
+
 Worth flagging explicitly since every other feature in this document flows
 through the server: Emmet (§4.4a) is resolved entirely inside the VSCode
 client from the TextMate grammar's scopes, with no request ever reaching the
 language server. The masking/region-splitting pipeline below exists to serve
-the *language server's* delegates; Emmet's HTML/CSS context detection is a
+the _language server's_ delegates; Emmet's HTML/CSS context detection is a
 separate, editor-native mechanism that happens to work correctly for free as
 long as the grammar's scope assignments (§4.4a) are accurate.
 
 ### 5.3 Masking strategy (see §8 for the known limitation)
+
 Every virtual document handed to a delegate is the same length, same line
 structure as the original file, with foreign-language spans replaced in place.
 This guarantees 1:1 offset mapping back to the real document — no position
 translation layer is needed anywhere in the merge step.
 
 ### 5.4 gopls integration
+
 The server spawns `gopls serve` (path configurable via
 `goTemplate.goplsPath`), communicates over stdio using `vscode-jsonrpc`'s
 message connection primitives, and sends standard `textDocument/didOpen` /
@@ -305,13 +322,13 @@ be written.)
 
 ## 7. Key design decisions & rationale
 
-| Decision | Rationale |
-|---|---|
-| Whitespace/placeholder masking over re-parsing | Guarantees 1:1 offsets; no position-mapping layer needed; same technique used by VSCode's own HTML server and by Volar (Vue/Astro). |
-| Reuse `vscode-html-languageservice` / `vscode-css-languageservice` as libraries, not by proxying the bundled extensions | These are published, standalone npm packages designed for exactly this reuse case; proxying VSCode's bundled extensions isn't a supported integration path. |
-| Drive `gopls` as a subprocess rather than reimplementing `go/types` | `gopls` already correctly implements Go's type system; duplicating it would be enormous, fragile, and would drift from the real compiler's behavior. |
-| `gotype:` comment convention (not automatic inference) for v1 | Matches GoLand's existing convention (so no new habit to learn), and is far simpler than static inference from `Execute()` call sites across the module. Automatic inference is a plausible v2 addition. |
-| Single Node.js server process hosting all four delegates | HTML/CSS/JS services have no non-JS equivalents worth using; consolidating avoids unnecessary IPC hops for the three delegates that are pure library calls. |
+| Decision                                                                                                                | Rationale                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Whitespace/placeholder masking over re-parsing                                                                          | Guarantees 1:1 offsets; no position-mapping layer needed; same technique used by VSCode's own HTML server and by Volar (Vue/Astro).                                                                      |
+| Reuse `vscode-html-languageservice` / `vscode-css-languageservice` as libraries, not by proxying the bundled extensions | These are published, standalone npm packages designed for exactly this reuse case; proxying VSCode's bundled extensions isn't a supported integration path.                                              |
+| Drive `gopls` as a subprocess rather than reimplementing `go/types`                                                     | `gopls` already correctly implements Go's type system; duplicating it would be enormous, fragile, and would drift from the real compiler's behavior.                                                     |
+| `gotype:` comment convention (not automatic inference) for v1                                                           | Matches GoLand's existing convention (so no new habit to learn), and is far simpler than static inference from `Execute()` call sites across the module. Automatic inference is a plausible v2 addition. |
+| Single Node.js server process hosting all four delegates                                                                | HTML/CSS/JS services have no non-JS equivalents worth using; consolidating avoids unnecessary IPC hops for the three delegates that are pure library calls.                                              |
 
 ## 8. Known limitations & risks
 
@@ -326,7 +343,7 @@ be written.)
   data-flow analysis.
 - **`$var`-prefixed variable tracking is partial.** Simple bindings such as
   `{{ $x := .Field }}` are tracked (and narrowed through `range`/`with`), but a
-  `$var` whose value is another *unresolved* `$var` (e.g. `{{ $foo := $bar }}`
+  `$var` whose value is another _unresolved_ `$var` (e.g. `{{ $foo := $bar }}`
   where `$bar` was never bound to a concrete type) degrades to `interface{}`
   rather than surfacing a type error.
 - **gopls process lifecycle.** Needs restart/health-check handling if `gopls`
@@ -389,11 +406,11 @@ be written.)
   workspace-scan cost for v2, or should the comment stay mandatory?
 - ~~Should the `emmet.includeLanguages` mapping (§4.4a) be written via
   `contributes.configurationDefaults` in `package.json` instead of an
-  activation-time prompt?~~ *Resolved:* both are shipped — the extension sets
+  activation-time prompt?~~ _Resolved:_ both are shipped — the extension sets
   `contributes.configurationDefaults` for users who have never touched the
   setting, and also prompts once to merge `gotmpl` into any pre-existing
   user mapping (see `client/src/extension.ts`).
-- §4.4b covers auto-*inserting* a closing tag when one is first typed. A
+- §4.4b covers auto-_inserting_ a closing tag when one is first typed. A
   related but distinct feature — editing `<p>` to `<div>` and having the
   existing `</p>` update live to `</div>` — is VSCode's separate "linked
   editing" capability (`textDocument/linkedEditingRange` in the LSP spec, a

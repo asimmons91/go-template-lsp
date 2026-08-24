@@ -53,8 +53,8 @@ export class TemplateNameService {
     await this.ready;
   }
 
-  private async scanWorkspace(): Promise<void> {
-    if (!this.rootUri) return;
+  private scanWorkspace(): Promise<void> {
+    if (!this.rootUri) return Promise.resolve();
     const files: string[] = [];
     this.walk(uriToPath(this.rootUri), files);
     for (const file of files) {
@@ -64,6 +64,7 @@ export class TemplateNameService {
         // Unreadable file — skip.
       }
     }
+    return Promise.resolve();
   }
 
   private walk(dir: string, out: string[]): void {
@@ -78,7 +79,10 @@ export class TemplateNameService {
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
         this.walk(full, out);
-      } else if (entry.isFile() && TEMPLATE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      } else if (
+        entry.isFile() &&
+        TEMPLATE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+      ) {
         out.push(full);
       }
     }
@@ -87,7 +91,10 @@ export class TemplateNameService {
   indexDocument(uri: string, text: string): void {
     this.removeDocument(uri);
     for (const d of scanTemplateDirectives(text)) {
-      const range = Range.create(offsetToPosition(text, d.quoteStart), offsetToPosition(text, d.quoteEnd));
+      const range = Range.create(
+        offsetToPosition(text, d.quoteStart),
+        offsetToPosition(text, d.quoteEnd),
+      );
       const loc: Location = { uri, range };
       if (d.keyword === 'define') {
         this.add(this.definitions, d.name, loc);

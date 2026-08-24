@@ -14,12 +14,18 @@ async function diagnosticsFor(text: string) {
 
 test('reports a genuinely unclosed tag', async () => {
   const diags = await diagnosticsFor('<div><span>text</div>');
-  assert.ok(diags.some((d) => d.message.includes('span')), diags.map((d) => d.message).join('; '));
+  assert.ok(
+    diags.some((d) => d.message.includes('span')),
+    diags.map((d) => d.message).join('; '),
+  );
 });
 
 test('reports an unclosed tag with no conditionals', async () => {
   const diags = await diagnosticsFor('<div>hello');
-  assert.ok(diags.some((d) => d.message.includes('div')), diags.map((d) => d.message).join('; '));
+  assert.ok(
+    diags.some((d) => d.message.includes('div')),
+    diags.map((d) => d.message).join('; '),
+  );
 });
 
 test('suppresses a tag whose open/close straddle if/else branches', async () => {

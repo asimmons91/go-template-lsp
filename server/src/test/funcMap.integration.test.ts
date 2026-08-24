@@ -22,7 +22,7 @@ async function completeAt(token: string): Promise<CompletionList> {
   try {
     const result = languageModes.getModeAtPosition(document, position);
     assert.ok(result, 'expected the gotemplate mode to be resolved inside the {{ }} action');
-    return await result!.mode.doComplete(document, position, result!.regions);
+    return await result.mode.doComplete(document, position, result.regions);
   } finally {
     languageModes.dispose();
   }
@@ -34,12 +34,15 @@ test('indexes FuncMap entries with signatures from the fixture', async () => {
 
   const upper = index.get('upper');
   assert.ok(upper, 'expected upper in index');
-  assert.deepEqual(upper!.params.map((p) => p.type), ['string']);
-  assert.deepEqual(upper!.results, ['string']);
+  assert.deepEqual(
+    upper.params.map((p) => p.type),
+    ['string'],
+  );
+  assert.deepEqual(upper.results, ['string']);
 
   const asUser = index.get('asUser');
   assert.ok(asUser, 'expected asUser in index');
-  assert.equal(asUser!.params[0].type, 'model.User');
+  assert.equal(asUser.params[0].type, 'model.User');
 });
 
 test('completes a registered function name with its signature', async () => {
@@ -48,7 +51,10 @@ test('completes a registered function name with its signature', async () => {
   assert.ok(labels.includes('upper'), `expected 'upper', got: ${labels.join(', ')}`);
 
   const upper = list.items.find((i) => i.label === 'upper');
-  assert.ok(upper!.detail?.includes('func(s string) string'), `unexpected detail: ${upper!.detail}`);
+  assert.ok(
+    upper!.detail?.includes('func(s string) string'),
+    `unexpected detail: ${upper!.detail}`,
+  );
 });
 
 test('completes a builtin function name', async () => {
@@ -60,5 +66,8 @@ test('completes a builtin function name', async () => {
 test('completes a field inside a function argument via gopls', async () => {
   const list = await completeAt('{{ upper .N');
   const labels = list.items.map((i) => i.label);
-  assert.ok(labels.includes('Name'), `expected 'Name' among arg completions, got: ${labels.join(', ')}`);
+  assert.ok(
+    labels.includes('Name'),
+    `expected 'Name' among arg completions, got: ${labels.join(', ')}`,
+  );
 });

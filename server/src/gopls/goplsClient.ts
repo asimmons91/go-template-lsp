@@ -3,9 +3,15 @@ import {
   createMessageConnection,
   MessageConnection,
   StreamMessageReader,
-  StreamMessageWriter
+  StreamMessageWriter,
 } from 'vscode-jsonrpc/node';
-import { CompletionItem, CompletionList, Diagnostic, Hover, Location } from 'vscode-languageserver/node';
+import {
+  CompletionItem,
+  CompletionList,
+  Diagnostic,
+  Hover,
+  Location,
+} from 'vscode-languageserver/node';
 
 export interface GoplsClient {
   /** Opens the URI on first use, otherwise pushes a full-text update. */
@@ -48,7 +54,10 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
   // gopls publishes diagnostics as notifications; we cache them per synthetic URI.
   const diagnosticCache = new Map<string, Diagnostic[]>();
   const dirty = new Set<string>();
-  const diagnosticWaiters = new Map<string, { resolve: (d: Diagnostic[]) => void; timer: NodeJS.Timeout }[]>();
+  const diagnosticWaiters = new Map<
+    string,
+    { resolve: (d: Diagnostic[]) => void; timer: NodeJS.Timeout }[]
+  >();
 
   function settleDiagnostics(uri: string, diagnostics: Diagnostic[]): void {
     diagnosticCache.set(uri, diagnostics);
@@ -68,19 +77,22 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       childProcess = child;
       const conn = createMessageConnection(
         new StreamMessageReader(child.stdout),
-        new StreamMessageWriter(child.stdin)
+        new StreamMessageWriter(child.stdin),
       );
-      conn.onNotification('textDocument/publishDiagnostics', (params: { uri: string; diagnostics: Diagnostic[] }) => {
-        settleDiagnostics(params.uri, params.diagnostics ?? []);
-      });
+      conn.onNotification(
+        'textDocument/publishDiagnostics',
+        (params: { uri: string; diagnostics: Diagnostic[] }) => {
+          settleDiagnostics(params.uri, params.diagnostics ?? []);
+        },
+      );
       conn.listen();
 
       await conn.sendRequest('initialize', {
         processId: process.pid ?? null,
         rootUri: rootUri ?? null,
-        capabilities: {}
+        capabilities: {},
       });
-      conn.sendNotification('initialized', {});
+      void conn.sendNotification('initialized', {});
 
       connection = conn;
       return conn;
@@ -104,16 +116,16 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       if (!openVersions.has(uri)) {
         openVersions.set(uri, 1);
         dirty.add(uri);
-        conn.sendNotification('textDocument/didOpen', {
-          textDocument: { uri, languageId: 'go', version: 1, text }
+        void conn.sendNotification('textDocument/didOpen', {
+          textDocument: { uri, languageId: 'go', version: 1, text },
         });
       } else if (prev !== text) {
         const version = openVersions.get(uri)! + 1;
         openVersions.set(uri, version);
         dirty.add(uri);
-        conn.sendNotification('textDocument/didChange', {
+        void conn.sendNotification('textDocument/didChange', {
           textDocument: { uri, version },
-          contentChanges: [{ text }]
+          contentChanges: [{ text }],
         });
       }
     },
@@ -124,15 +136,14 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
 
       try {
         const text = openText.get(uri) ?? '';
-        const response = await conn.sendRequest<{ items?: CompletionItem[] } | CompletionItem[] | null>(
-          'textDocument/completion',
-          {
-            textDocument: { uri },
-            position: offsetToPosition(text, offset)
-          }
-        );
+        const response = await conn.sendRequest<
+          { items?: CompletionItem[] } | CompletionItem[] | null
+        >('textDocument/completion', {
+          textDocument: { uri },
+          position: offsetToPosition(text, offset),
+        });
         if (!response) return CompletionList.create([], false);
-        const items = Array.isArray(response) ? response : response.items ?? [];
+        const items = Array.isArray(response) ? response : (response.items ?? []);
         return CompletionList.create(items, false);
       } catch {
         return CompletionList.create([], false);
@@ -145,10 +156,13 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
 
       try {
         const text = openText.get(uri) ?? '';
-        const response = await conn.sendRequest<Location[] | Location | null>('textDocument/definition', {
-          textDocument: { uri },
-          position: offsetToPosition(text, offset)
-        });
+        const response = await conn.sendRequest<Location[] | Location | null>(
+          'textDocument/definition',
+          {
+            textDocument: { uri },
+            position: offsetToPosition(text, offset),
+          },
+        );
         if (!response) return [];
         if (Array.isArray(response)) return response;
         return [response];
@@ -165,7 +179,7 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
         const text = openText.get(uri) ?? '';
         const response = await conn.sendRequest<Hover | null>('textDocument/hover', {
           textDocument: { uri },
-          position: offsetToPosition(text, offset)
+          position: offsetToPosition(text, offset),
         });
         return response ?? undefined;
       } catch {
@@ -185,7 +199,10 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       return new Promise<Diagnostic[]>((resolve) => {
         const timer = setTimeout(() => {
           const waiters = diagnosticWaiters.get(uri) ?? [];
-          diagnosticWaiters.set(uri, waiters.filter((w) => w.timer !== timer));
+          diagnosticWaiters.set(
+            uri,
+            waiters.filter((w) => w.timer !== timer),
+          );
           settleDiagnostics(uri, diagnosticCache.get(uri) ?? []);
         }, 2000);
         const waiters = diagnosticWaiters.get(uri) ?? [];
@@ -207,6 +224,6 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
         for (const w of waiters) clearTimeout(w.timer);
       }
       diagnosticWaiters.clear();
-    }
+    },
   };
 }

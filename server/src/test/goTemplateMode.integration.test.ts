@@ -4,7 +4,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from '../languageModes';
-import { LanguageMode } from '../languageModes';
 
 const fixtureRoot = path.join(__dirname, '..', '..', '..', 'fixtures', 'gotype-fixture');
 const pageFile = path.join(fixtureRoot, 'views', 'page.gohtml');
@@ -21,7 +20,7 @@ async function completeAt(token: string): Promise<string[]> {
   try {
     const result = languageModes.getModeAtPosition(document, position);
     assert.ok(result, 'expected the gotemplate mode to be resolved inside the {{ }} action');
-    const list = await (result!.mode as LanguageMode).doComplete(document, position, result!.regions);
+    const list = await result.mode.doComplete(document, position, result.regions);
     return list.items.map((item) => item.label);
   } finally {
     languageModes.dispose();
@@ -30,7 +29,10 @@ async function completeAt(token: string): Promise<string[]> {
 
 test('completes a flat struct field via a real gopls subprocess', async () => {
   const labels = await completeAt('.N');
-  assert.ok(labels.includes('Name'), `expected 'Name' among gopls completions, got: ${labels.join(', ')}`);
+  assert.ok(
+    labels.includes('Name'),
+    `expected 'Name' among gopls completions, got: ${labels.join(', ')}`,
+  );
 });
 
 test('completes a nested field chain', async () => {

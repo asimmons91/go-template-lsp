@@ -95,7 +95,7 @@ function rewriteValue(value: string, scope: Scope): RewriteValueResult {
     }
 
     if (ch === '.') {
-      const isRoot = !/[A-Za-z0-9_)\]}\"']/.test(prevSignificant);
+      const isRoot = !/[A-Za-z0-9_)\]}"']/.test(prevSignificant);
       go += isRoot ? `${scope.dotVar}.` : '.';
       pushBoundary();
       prevSignificant = '.';
@@ -162,7 +162,13 @@ export function rewritePipeline(pipeline: string, scope: Scope): RewriteResult {
     const args: ExprNode[] = [];
     for (const arg of cmd.args) {
       const rv = rewriteValue(arg.text, scope);
-      args.push({ kind: 'value', go: rv.go, tStart: arg.start, tEnd: arg.end, charMap: rv.charMap });
+      args.push({
+        kind: 'value',
+        go: rv.go,
+        tStart: arg.start,
+        tEnd: arg.end,
+        charMap: rv.charMap,
+      });
     }
     expr =
       expr === undefined
@@ -205,7 +211,7 @@ function flattenExpr(node: ExprNode, spans: ValueSpan[], pos: { n: number }): st
 }
 
 function buildCharMap(pipeline: string, spans: ValueSpan[]): number[] {
-  const charMap: number[] = new Array(pipeline.length + 1);
+  const charMap: number[] = new Array<number>(pipeline.length + 1);
   for (let t = 0; t <= pipeline.length; t++) {
     charMap[t] = boundaryFor(t, spans);
   }
@@ -252,7 +258,7 @@ function emitNodes(
   nodes: TemplateNode[],
   scope: Scope,
   nextId: () => number,
-  state: { goLength: number }
+  state: { goLength: number },
 ): void {
   const push = (s: string) => {
     parts.push(s);
@@ -418,12 +424,14 @@ export function transpileTemplate(
   documentUri: string,
   text: string,
   gotype: GotypeDescriptor,
-  funcMap?: ReadonlyMap<string, FuncMapEntry>
+  funcMap?: ReadonlyMap<string, FuncMapEntry>,
 ): TranspileResult {
   const nodes = parseTemplate(text);
   const packageName = resolvePackageName(documentUri);
 
-  const importSpecs: { name?: string; path: string }[] = [{ name: 'gotmpl0', path: gotype.importPath }];
+  const importSpecs: { name?: string; path: string }[] = [
+    { name: 'gotmpl0', path: gotype.importPath },
+  ];
   const pkgAlias = new Map<string, string>();
   if (funcMap && funcMap.size > 0) {
     for (const entry of funcMap.values()) {
@@ -446,7 +454,7 @@ export function transpileTemplate(
   const parts: string[] = [
     `package ${packageName}\n\n`,
     `${importBlock}\n\n`,
-    `var ${UNDEFINED_VAR} interface{}\n\n`
+    `var ${UNDEFINED_VAR} interface{}\n\n`,
   ];
 
   if (funcMap && funcMap.size > 0) {
@@ -461,7 +469,7 @@ export function transpileTemplate(
     `func gotmplRender() {\n`,
     `\tvar dot gotmpl0.${gotype.typeName}\n`,
     `\t_ = dot\n`,
-    `\t_ = ${UNDEFINED_VAR}\n`
+    `\t_ = ${UNDEFINED_VAR}\n`,
   );
   const segments: Segment[] = [];
   let id = 0;
@@ -488,7 +496,7 @@ export function transpileTemplate(
       const end = mapGoOffsetToTemplate(segments, goEnd);
       if (start === -1 || end === -1) return undefined;
       return { start, end };
-    }
+    },
   };
 }
 
@@ -516,14 +524,72 @@ function mapGoOffsetToTemplate(segments: Segment[], goOffset: number): number {
 }
 
 const GO_RESERVED = new Set([
-  'break', 'case', 'chan', 'const', 'continue', 'default', 'defer', 'else', 'fallthrough', 'for',
-  'func', 'go', 'goto', 'if', 'import', 'interface', 'map', 'package', 'range', 'return', 'select',
-  'struct', 'switch', 'type', 'var',
-  'append', 'cap', 'close', 'complex', 'copy', 'delete', 'imag', 'len', 'make', 'new', 'panic',
-  'print', 'println', 'real', 'recover',
-  'bool', 'byte', 'complex64', 'complex128', 'error', 'float32', 'float64', 'int', 'int8', 'int16',
-  'int32', 'int64', 'rune', 'string', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'uintptr',
-  'any', 'comparable', 'true', 'false', 'iota', 'nil'
+  'break',
+  'case',
+  'chan',
+  'const',
+  'continue',
+  'default',
+  'defer',
+  'else',
+  'fallthrough',
+  'for',
+  'func',
+  'go',
+  'goto',
+  'if',
+  'import',
+  'interface',
+  'map',
+  'package',
+  'range',
+  'return',
+  'select',
+  'struct',
+  'switch',
+  'type',
+  'var',
+  'append',
+  'cap',
+  'close',
+  'complex',
+  'copy',
+  'delete',
+  'imag',
+  'len',
+  'make',
+  'new',
+  'panic',
+  'print',
+  'println',
+  'real',
+  'recover',
+  'bool',
+  'byte',
+  'complex64',
+  'complex128',
+  'error',
+  'float32',
+  'float64',
+  'int',
+  'int8',
+  'int16',
+  'int32',
+  'int64',
+  'rune',
+  'string',
+  'uint',
+  'uint8',
+  'uint16',
+  'uint32',
+  'uint64',
+  'uintptr',
+  'any',
+  'comparable',
+  'true',
+  'false',
+  'iota',
+  'nil',
 ]);
 
 function emitFuncDecl(entry: FuncMapEntry, pkgAlias: Map<string, string>): string {
@@ -533,7 +599,7 @@ function emitFuncDecl(entry: FuncMapEntry, pkgAlias: Map<string, string>): strin
       const name = p.name && /^[A-Za-z_]/.test(p.name) ? p.name : `arg${i}`;
       const type = rewriteQualifiedType(
         entry.variadic && i === entry.params.length - 1 ? `...${p.type}` : p.type,
-        pkgAlias
+        pkgAlias,
       );
       return `${name} ${type}`;
     })

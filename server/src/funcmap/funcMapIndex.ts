@@ -108,7 +108,7 @@ export function getFuncMapIndexer(rootUri: string | undefined): FuncMapIndexer {
   let pending: Promise<Map<string, FuncMapEntry>> | undefined;
 
   function build(): Promise<Map<string, FuncMapEntry>> {
-    if (!rootUri) return Promise.resolve(new Map());
+    if (!rootUri) return Promise.resolve(new Map<string, FuncMapEntry>());
     const workspaceDir = uriToPath(rootUri);
 
     return new Promise((resolve) => {
@@ -126,12 +126,12 @@ export function getFuncMapIndexer(rootUri: string | undefined): FuncMapIndexer {
 
       const timer = setTimeout(() => {
         child.kill();
-        resolve(new Map());
+        resolve(new Map<string, FuncMapEntry>());
       }, 60000);
 
       child.on('error', () => {
         clearTimeout(timer);
-        resolve(new Map());
+        resolve(new Map<string, FuncMapEntry>());
       });
       child.on('close', () => {
         clearTimeout(timer);

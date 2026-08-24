@@ -73,7 +73,11 @@ export function splitGotypeValue(value: string): GotypeValueParts {
   const lastSlash = value.lastIndexOf('/');
   const lastDot = value.lastIndexOf('.');
   if (lastDot > lastSlash) {
-    return { packagePath: value.slice(0, lastDot), typePrefix: value.slice(lastDot + 1), hasTypeSeparator: true };
+    return {
+      packagePath: value.slice(0, lastDot),
+      typePrefix: value.slice(lastDot + 1),
+      hasTypeSeparator: true,
+    };
   }
   return { packagePath: value, typePrefix: '', hasTypeSeparator: false };
 }
@@ -94,7 +98,7 @@ function fullImportPath(item: CompletionItem): string {
 export async function completePackagePath(
   client: GoplsClient,
   documentUri: string,
-  prefix: string
+  prefix: string,
 ): Promise<CompletionItem[]> {
   const pkgName = resolvePackageName(documentUri);
   const uri = `${documentUri}${PACKAGE_SYNTHETIC_SUFFIX}`;
@@ -133,7 +137,7 @@ export async function completeStructNames(
   client: GoplsClient,
   documentUri: string,
   packagePath: string,
-  typePrefix: string
+  typePrefix: string,
 ): Promise<CompletionItem[]> {
   const uri = `${documentUri}${MEMBER_SYNTHETIC_SUFFIX}`;
   const source = `package ${resolvePackageName(documentUri)}\n\nimport gotmpl0 "${packagePath}"\n\nvar _ = gotmpl0.${typePrefix}`;
@@ -161,11 +165,13 @@ export async function resolveGotypeType(
   client: GoplsClient,
   documentUri: string,
   importPath: string,
-  typeName: string
+  typeName: string,
 ): Promise<boolean> {
   const uri = `${documentUri}${MEMBER_SYNTHETIC_SUFFIX}`;
   const source = `package ${resolvePackageName(documentUri)}\n\nimport gotmpl0 "${importPath}"\n\nvar _ = gotmpl0.${typeName}`;
   await client.openOrUpdate(uri, source);
   const list = await client.completion(uri, source.length);
-  return list.items.some((item) => item.label === typeName && item.kind === CompletionItemKind.Struct);
+  return list.items.some(
+    (item) => item.label === typeName && item.kind === CompletionItemKind.Struct,
+  );
 }

@@ -1,4 +1,15 @@
-import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Hover, Location, Position, Range, ReferenceContext } from 'vscode-languageserver/node';
+import {
+  CompletionItem,
+  CompletionItemKind,
+  CompletionList,
+  Diagnostic,
+  DiagnosticSeverity,
+  Hover,
+  Location,
+  Position,
+  Range,
+  ReferenceContext,
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
@@ -10,7 +21,7 @@ import {
   findGotypeValueSpan,
   GotypeValueSpan,
   resolveGotypeType,
-  splitGotypeValue
+  splitGotypeValue,
 } from '../gotypeCompletion';
 import { parseTemplate, findPipelineAtOffset, validateTemplateSyntax } from '../templateParser';
 import { scanTemplateDirectives } from '../templateDirectives';
@@ -28,14 +39,18 @@ export function getGoTemplateMode(
   goplsPath: string,
   rootUri: string | undefined,
   funcMapIndexer: FuncMapIndexer,
-  templateNames: TemplateNameService
+  templateNames: TemplateNameService,
 ): GoTemplateLanguageMode {
   const client: GoplsClient = createGoplsClient(goplsPath, rootUri);
 
   return {
     getId: () => 'gotemplate',
 
-    async doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): Promise<CompletionList> {
+    async doComplete(
+      document: TextDocument,
+      position: Position,
+      regions: GoTemplateDocument,
+    ): Promise<CompletionList> {
       const text = document.getText();
       const offset = document.offsetAt(position);
 
@@ -47,7 +62,9 @@ export function getGoTemplateMode(
         return completeGotypeValue(client, document, offset, gotypeSpan);
       }
 
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (directive && directive.keyword === 'template') {
         await templateNames.ensureReady();
         const prefix = text.slice(directive.nameStart, offset);
@@ -82,10 +99,15 @@ export function getGoTemplateMode(
       return client.completion(uri, goOffset);
     },
 
-    async doDefinition(document: TextDocument, position: Position): Promise<Location[] | undefined> {
+    async doDefinition(
+      document: TextDocument,
+      position: Position,
+    ): Promise<Location[] | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (directive) {
         await templateNames.ensureReady();
         return templateNames.getDefinitions(directive.name);
@@ -110,15 +132,19 @@ export function getGoTemplateMode(
       document: TextDocument,
       position: Position,
       _regions: GoTemplateDocument,
-      context: ReferenceContext
+      context: ReferenceContext,
     ): Promise<Location[] | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
-      const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
+      const directive = scanTemplateDirectives(text).find(
+        (d) => d.nameStart <= offset && offset <= d.nameEnd,
+      );
       if (!directive) return undefined;
       await templateNames.ensureReady();
       const refs = templateNames.getReferences(directive.name);
-      return context.includeDeclaration ? refs.concat(templateNames.getDefinitions(directive.name)) : refs;
+      return context.includeDeclaration
+        ? refs.concat(templateNames.getDefinitions(directive.name))
+        : refs;
     },
 
     async doHover(document: TextDocument, position: Position): Promise<Hover | undefined> {
@@ -146,7 +172,7 @@ export function getGoTemplateMode(
         range: Range.create(document.positionAt(issue.start), document.positionAt(issue.end)),
         message: issue.message,
         severity: DiagnosticSeverity.Error,
-        source: 'go-template'
+        source: 'go-template',
       }));
 
       const gotype = parseGotypeComment(text);
@@ -154,7 +180,12 @@ export function getGoTemplateMode(
 
       if (!(await client.health())) return diagnostics;
 
-      const resolved = await resolveGotypeType(client, document.uri, gotype.importPath, gotype.typeName);
+      const resolved = await resolveGotypeType(
+        client,
+        document.uri,
+        gotype.importPath,
+        gotype.typeName,
+      );
       if (!resolved) {
         const span = findGotypeValueRange(text);
         const range = span
@@ -165,7 +196,7 @@ export function getGoTemplateMode(
           range,
           message: `gotype type "${gotype.importPath}.${gotype.typeName}" not found or not a struct type.`,
           severity: DiagnosticSeverity.Error,
-          source: 'go-template'
+          source: 'go-template',
         });
         return diagnostics;
       }
@@ -187,7 +218,7 @@ export function getGoTemplateMode(
           range: Range.create(document.positionAt(mapped.start), document.positionAt(mapped.end)),
           message: d.message,
           severity: d.severity ?? DiagnosticSeverity.Error,
-          source: 'go-template'
+          source: 'go-template',
         });
       }
       return diagnostics;
@@ -195,7 +226,7 @@ export function getGoTemplateMode(
 
     dispose() {
       client.dispose();
-    }
+    },
   };
 }
 
@@ -253,7 +284,7 @@ async function completeGotypeValue(
   client: GoplsClient,
   document: TextDocument,
   offset: number,
-  span: GotypeValueSpan
+  span: GotypeValueSpan,
 ): Promise<CompletionList> {
   const { packagePath, typePrefix, hasTypeSeparator } = splitGotypeValue(span.value);
 
@@ -280,7 +311,7 @@ async function completeGotypeValue(
 function completeFunctionNames(
   pipeline: string,
   cursorRel: number,
-  funcMap: ReadonlyMap<string, FuncMapEntry>
+  funcMap: ReadonlyMap<string, FuncMapEntry>,
 ): CompletionList | undefined {
   for (const cmd of parsePipeline(pipeline)) {
     if (cursorRel < cmd.nameStart || cursorRel > cmd.nameEnd) continue;
@@ -293,7 +324,7 @@ function completeFunctionNames(
         label: entry.name,
         kind: CompletionItemKind.Function,
         detail: formatSignature(entry),
-        sortText: `0${entry.name}`
+        sortText: `0${entry.name}`,
       });
     }
     return CompletionList.create(items, true);

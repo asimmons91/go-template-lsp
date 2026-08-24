@@ -21,7 +21,7 @@ test('reports an undefined field diagnostic from gopls', async () => {
       diags.some((d) => d.source === 'go-template' && /Nope/.test(d.message)),
       `expected an undefined-field diagnostic mentioning "Nope", got: ${diags
         .map((d) => `${d.source}: ${d.message}`)
-        .join('; ')}`
+        .join('; ')}`,
     );
   } finally {
     languageModes.dispose();
@@ -31,14 +31,15 @@ test('reports an undefined field diagnostic from gopls', async () => {
 test('reports an arity diagnostic for a FuncMap function', async () => {
   const languageModes = getLanguageModes('gopls', `file://${fixtureRoot}`);
   try {
-    const text = '{{- /* gotype: example.com/gotypefixture/model.User */ -}}\n<p>{{ upper .Name "extra" }}</p>';
+    const text =
+      '{{- /* gotype: example.com/gotypefixture/model.User */ -}}\n<p>{{ upper .Name "extra" }}</p>';
     const diags = await languageModes.doDiagnostics(documentFor(text));
 
     assert.ok(
       diags.some((d) => d.source === 'go-template' && /too many arguments/.test(d.message)),
       `expected an arity diagnostic for "upper", got: ${diags
         .map((d) => `${d.source}: ${d.message}`)
-        .join('; ')}`
+        .join('; ')}`,
     );
   } finally {
     languageModes.dispose();
@@ -57,7 +58,7 @@ test('does not flag a valid field access', async () => {
       0,
       `expected no go-template diagnostics for a valid field, got: ${goDiags
         .map((d) => d.message)
-        .join('; ')}`
+        .join('; ')}`,
     );
   } finally {
     languageModes.dispose();

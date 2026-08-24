@@ -50,8 +50,8 @@ enable manually, add to your settings:
 ```jsonc
 {
   "emmet.includeLanguages": {
-    "gotmpl": "html"
-  }
+    "gotmpl": "html",
+  },
 }
 ```
 

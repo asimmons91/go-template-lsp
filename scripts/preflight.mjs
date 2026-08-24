@@ -11,7 +11,7 @@ const required = [
   'bin/gotmpl-funcmap-linux-arm64',
   'bin/gotmpl-funcmap-windows-amd64.exe',
   'server/out/server.js',
-  'client/out/extension.js'
+  'client/out/extension.js',
 ];
 
 const missing = required.filter((rel) => !fs.existsSync(path.join(root, rel)));

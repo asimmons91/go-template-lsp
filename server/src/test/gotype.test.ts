@@ -3,7 +3,9 @@ import * as assert from 'node:assert/strict';
 import { parseGotypeComment } from '../gotype';
 
 test('parses a gotype comment with trim markers', () => {
-  const result = parseGotypeComment('{{- /* gotype: example.com/gotypefixture/model.User */ -}}\n<p></p>');
+  const result = parseGotypeComment(
+    '{{- /* gotype: example.com/gotypefixture/model.User */ -}}\n<p></p>',
+  );
   assert.deepEqual(result, { importPath: 'example.com/gotypefixture/model', typeName: 'User' });
 });
 
@@ -17,5 +19,8 @@ test('returns undefined when no gotype comment is present', () => {
 });
 
 test('returns undefined for a malformed reference with no type name', () => {
-  assert.equal(parseGotypeComment('{{- /* gotype: example.com/gotypefixture/model */ -}}'), undefined);
+  assert.equal(
+    parseGotypeComment('{{- /* gotype: example.com/gotypefixture/model */ -}}'),
+    undefined,
+  );
 });

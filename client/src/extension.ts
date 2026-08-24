@@ -7,13 +7,13 @@ import {
   SnippetString,
   TextEditor,
   window,
-  workspace
+  workspace,
 } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  TransportKind
+  TransportKind,
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient;
@@ -25,7 +25,7 @@ let client: LanguageClient;
  */
 export function mergeIncludeLanguages(
   current: Record<string, string> | undefined,
-  add: Record<string, string>
+  add: Record<string, string>,
 ): Record<string, string> {
   return { ...(current ?? {}), ...add };
 }
@@ -41,8 +41,8 @@ export function activate(context: ExtensionContext): void {
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
-      options: { execArgv: ['--nolazy', '--inspect=6009'] }
-    }
+      options: { execArgv: ['--nolazy', '--inspect=6009'] },
+    },
   };
 
   const clientOptions: LanguageClientOptions = {
@@ -50,21 +50,21 @@ export function activate(context: ExtensionContext): void {
     synchronize: {
       // Re-run Go-side analysis when .go files change, not just template files,
       // since FuncMap/gotype context lives in the surrounding Go source.
-      fileEvents: workspace.createFileSystemWatcher('**/*.{go,gotmpl,gtpl,tmpl,gohtml}')
+      fileEvents: workspace.createFileSystemWatcher('**/*.{go,gotmpl,gtpl,tmpl,gohtml}'),
     },
     initializationOptions: {
-      goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls')
-    }
+      goplsPath: workspace.getConfiguration('goTemplate').get<string>('goplsPath', 'gopls'),
+    },
   };
 
   client = new LanguageClient(
     'goTemplateLanguageServer',
     'Go Template Language Server',
     serverOptions,
-    clientOptions
+    clientOptions,
   );
 
-  client.start();
+  void client.start();
 
   promptForEmmet(context);
   wireTagComplete(context);
@@ -136,7 +136,7 @@ function updateEmmetContext(editor: TextEditor | undefined): void {
   if (editor && editor.document.languageId === 'gotmpl') {
     const text = editor.document.getText();
     inAction = editor.selections.some((selection) =>
-      isInsideGoAction(text, editor.document.offsetAt(selection.active))
+      isInsideGoAction(text, editor.document.offsetAt(selection.active)),
     );
   }
   void commands.executeCommand('setContext', 'gotmpl.inAction', inAction);
@@ -154,7 +154,7 @@ function wireEmmetContext(context: ExtensionContext): void {
   context.subscriptions.push(
     window.onDidChangeTextEditorSelection(() => updateEmmetContext(window.activeTextEditor)),
     workspace.onDidChangeTextDocument(() => updateEmmetContext(window.activeTextEditor)),
-    window.onDidChangeActiveTextEditor((editor) => updateEmmetContext(editor))
+    window.onDidChangeActiveTextEditor((editor) => updateEmmetContext(editor)),
   );
 }
 
@@ -181,7 +181,7 @@ function promptForEmmet(context: ExtensionContext): void {
       void emmetConfig.update(
         'includeLanguages',
         mergeIncludeLanguages(include, { gotmpl: 'html' }),
-        ConfigurationTarget.Global
+        ConfigurationTarget.Global,
       );
     });
 }
@@ -206,7 +206,7 @@ function wireTagComplete(context: ExtensionContext): void {
       client
         .sendRequest<string | null>('html/tag', {
           textDocument: { uri: doc.uri.toString() },
-          position
+          position,
         })
         .then(
           (result) => {
@@ -215,8 +215,8 @@ function wireTagComplete(context: ExtensionContext): void {
             if (!editor || editor.document.uri.toString() !== doc.uri.toString()) return;
             void editor.insertSnippet(new SnippetString(result), position);
           },
-          () => undefined
+          () => undefined,
         );
-    })
+    }),
   );
 }

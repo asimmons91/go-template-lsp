@@ -6,7 +6,7 @@ import {
   InitializeResult,
   TextDocumentSyncKind,
   CompletionList,
-  Position
+  Position,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getLanguageModes } from './languageModes';
@@ -30,20 +30,19 @@ function validateTextDocument(textDocument: TextDocument): void {
 
   pendingValidations.set(
     uri,
-    setTimeout(async () => {
+    setTimeout(() => {
       pendingValidations.delete(uri);
-      try {
-        const diagnostics = await languageModes.doDiagnostics(textDocument);
-        connection.sendDiagnostics({ uri, diagnostics });
-      } catch {
-        connection.sendDiagnostics({ uri, diagnostics: [] });
-      }
-    }, 150)
+      void languageModes
+        .doDiagnostics(textDocument)
+        .then((diagnostics) => connection.sendDiagnostics({ uri, diagnostics }))
+        .catch(() => connection.sendDiagnostics({ uri, diagnostics: [] }));
+    }, 150),
   );
 }
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
-  const goplsPath = (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
+  const goplsPath =
+    (params.initializationOptions as { goplsPath?: string } | undefined)?.goplsPath ?? 'gopls';
   const rootUri = params.rootUri ?? params.workspaceFolders?.[0]?.uri ?? undefined;
   languageModes = getLanguageModes(goplsPath, rootUri);
 
@@ -52,12 +51,12 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
         resolveProvider: false,
-        triggerCharacters: ['<', '"', "'", '=', '/', '.', ':', '-', '@']
+        triggerCharacters: ['<', '"', "'", '=', '/', '.', ':', '-', '@'],
       },
       definitionProvider: true,
       referencesProvider: true,
-      hoverProvider: true
-    }
+      hoverProvider: true,
+    },
   };
 });
 
@@ -88,7 +87,10 @@ connection.onReferences(async (params) => {
   const result = languageModes.getModeAtPosition(document, params.position);
   if (!result?.mode.doReferences) return null;
 
-  return (await result.mode.doReferences(document, params.position, result.regions, params.context)) ?? null;
+  return (
+    (await result.mode.doReferences(document, params.position, result.regions, params.context)) ??
+    null
+  );
 });
 
 connection.onHover(async (params) => {
@@ -101,11 +103,14 @@ connection.onHover(async (params) => {
   return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
 });
 
-connection.onRequest('html/tag', (params: { textDocument: { uri: string }; position: Position }) => {
-  const document = documents.get(params.textDocument.uri);
-  if (!document || !languageModes) return null;
-  return languageModes.doTagComplete(document, params.position);
-});
+connection.onRequest(
+  'html/tag',
+  (params: { textDocument: { uri: string }; position: Position }) => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document || !languageModes) return null;
+    return languageModes.doTagComplete(document, params.position);
+  },
+);
 
 documents.onDidOpen((e) => {
   languageModes?.onDocumentOpened(e.document);
