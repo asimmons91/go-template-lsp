@@ -4,6 +4,7 @@
   "description": "Type-aware completion for Go templates (via gopls) plus embedded HTML/CSS/JS intellisense",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "publisher": "go-template-lsp",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
