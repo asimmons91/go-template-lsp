@@ -2,5 +2,17 @@
 <html>
 <body>
   <p>{{ .N }}</p>
+  <ul>
+    {{range .Items}}
+      <li>{{ .T }}</li>
+    {{end}}
+  </ul>
+  <div>
+    {{with .Address}}
+      <p>{{ .C }}</p>
+    {{end}}
+  </div>
+  <p>{{ .Address.Zi }}</p>
+  <p>{{ $x := .Address }}{{ $x.C }}</p>
 </body>
 </html>

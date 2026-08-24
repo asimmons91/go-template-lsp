@@ -3,19 +3,11 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
 import { parseGotypeComment } from '../gotype';
-import { buildSyntheticCompletion } from '../transpiler';
+import { transpileTemplate } from '../transpiler';
 import { createGoplsClient, GoplsClient } from '../gopls/goplsClient';
 
 export interface GoTemplateLanguageMode extends LanguageMode {
   dispose(): void;
-}
-
-/**
- * Strips the leading `{{`, any `-` trim marker, and whitespace off the action text
- * up to the cursor, leaving a bare dot-expression candidate like `.` or `.Na`.
- */
-function extractFieldExpr(actionText: string): string {
-  return actionText.replace(/^\{\{-?\s*/, '');
 }
 
 export function getGoTemplateMode(goplsPath: string, rootUri: string | undefined): GoTemplateLanguageMode {
@@ -34,12 +26,12 @@ export function getGoTemplateMode(goplsPath: string, rootUri: string | undefined
       const gotype = parseGotypeComment(text);
       if (!gotype) return CompletionList.create([], false);
 
-      const fieldExpr = extractFieldExpr(text.slice(span.start, offset));
-      const target = buildSyntheticCompletion({ documentUri: document.uri, gotype, fieldExpr });
-      if (!target) return CompletionList.create([], false);
+      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype);
+      const goOffset = mapOffset(offset);
+      if (goOffset < 0) return CompletionList.create([], false);
 
-      await client.openOrUpdate(target.uri, target.goSource);
-      return client.completion(target.uri, target.offset);
+      await client.openOrUpdate(uri, goSource);
+      return client.completion(uri, goOffset);
     },
 
     dispose() {
