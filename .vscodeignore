@@ -1,0 +1,34 @@
+# Source control & tooling
+.git/**
+.gitignore
+.claude/**
+.vscode/**
+node_modules/**
+
+# Build inputs (source, not shipped in the .vsix)
+fixtures/**
+funcmap/**
+client/src/**
+client/tsconfig.json
+server/src/**
+server/tsconfig.json
+mise.toml
+AGENTS.md
+REQUIREMENTS.md
+
+# Lockfiles & packaging artifacts
+package-lock.json
+client/package-lock.json
+server/package-lock.json
+*.vsix
+*.tgz
+
+# Dev-only dependencies (runtime deps are kept)
+client/node_modules/typescript/**
+client/node_modules/@types/**
+server/node_modules/@types/**
+server/node_modules/undici-types/**
+
+# Source maps & compiled tests
+**/*.map
+server/out/test/**

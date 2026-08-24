@@ -17,3 +17,28 @@ run = [
     "mise run test-go",
     "mise run test-ts"
 ]
+
+[tasks.build-funcmap]
+description = "Cross-compile the Go funcmap indexer for Windows, macOS, and Linux"
+dir = "funcmap"
+run = [
+    "mkdir -p ../bin",
+    "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-linux-amd64 .",
+    "CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../bin/gotmpl-funcmap-linux-arm64 .",
+    "CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-darwin-amd64 .",
+    "CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ../bin/gotmpl-funcmap-darwin-arm64 .",
+    "CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../bin/gotmpl-funcmap-windows-amd64.exe ."
+]
+
+[tasks.build-ts]
+description = "Compile the TypeScript client and server"
+run = "npm run compile"
+
+[tasks.build]
+description = "Build the funcmap binaries and TypeScript client/server"
+depends = ["build-funcmap", "build-ts"]
+
+[tasks.package]
+description = "Package the extension into a .vsix including pre-built binaries"
+depends = ["build"]
+run = "npm run package"

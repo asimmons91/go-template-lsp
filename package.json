@@ -4,6 +4,7 @@
   "description": "Type-aware completion for Go templates (via gopls) plus embedded HTML/CSS/JS intellisense",
   "version": "0.0.1",
   "private": true,
+  "publisher": "go-template-lsp",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
   "activationEvents": ["onLanguage:gotmpl"],
@@ -45,10 +46,12 @@
     "compile": "tsc -p ./client && tsc -p ./server",
     "test": "npm run compile && cd server && npm test",
     "watch": "tsc -p ./client -w & tsc -p ./server -w",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.4.0"
   }
 }

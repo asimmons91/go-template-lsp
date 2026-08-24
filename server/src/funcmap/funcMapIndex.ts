@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 
 export interface FuncMapParam {
@@ -46,6 +47,38 @@ export interface FuncMapIndexer {
 // indexer module lives at the repository root's `funcmap/` directory.
 const FUNCMAP_DIR = path.resolve(__dirname, '..', '..', '..', 'funcmap');
 
+// Pre-built indexer binaries (produced by `mise run build-funcmap`) live at the
+// repository root's `bin/` directory, which the packaged extension ships too.
+const BIN_DIR = path.resolve(__dirname, '..', '..', '..', 'bin');
+
+function currentGOOS(): string {
+  switch (process.platform) {
+    case 'win32':
+      return 'windows';
+    case 'darwin':
+      return 'darwin';
+    default:
+      return 'linux';
+  }
+}
+
+function currentGOARCH(): string {
+  switch (process.arch) {
+    case 'x64':
+      return 'amd64';
+    case 'arm64':
+      return 'arm64';
+    default:
+      return process.arch;
+  }
+}
+
+function prebuiltBinary(): string | undefined {
+  const suffix = process.platform === 'win32' ? '.exe' : '';
+  const candidate = path.join(BIN_DIR, `gotmpl-funcmap-${currentGOOS()}-${currentGOARCH()}${suffix}`);
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
 function uriToPath(uri: string): string {
   return decodeURIComponent(uri.replace(/^file:\/\//, ''));
 }
@@ -64,9 +97,11 @@ function parseIndex(stdout: string): Map<string, FuncMapEntry> {
 }
 
 /**
- * Lazily runs the companion Go indexer (`go run . <workspaceDir>`) on demand and
- * caches the resulting key -> signature map. Any spawn or parse failure resolves
- * to an empty index so a missing/broken Go toolchain degrades gracefully.
+ * Lazily runs the companion Go indexer on demand — the pre-built binary for the
+ * current platform when available (`<workspaceDir>`), falling back to
+ * `go run . <workspaceDir>` in development — and caches the resulting key ->
+ * signature map. Any spawn or parse failure resolves to an empty index so a
+ * missing/broken Go toolchain degrades gracefully.
  */
 export function getFuncMapIndexer(rootUri: string | undefined): FuncMapIndexer {
   let cache: Map<string, FuncMapEntry> | undefined;
@@ -77,10 +112,13 @@ export function getFuncMapIndexer(rootUri: string | undefined): FuncMapIndexer {
     const workspaceDir = uriToPath(rootUri);
 
     return new Promise((resolve) => {
-      const child = spawn('go', ['run', '.', workspaceDir], {
-        cwd: FUNCMAP_DIR,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
+      const binary = prebuiltBinary();
+      const child = binary
+        ? spawn(binary, [workspaceDir], { stdio: ['ignore', 'pipe', 'pipe'] })
+        : spawn('go', ['run', '.', workspaceDir], {
+            cwd: FUNCMAP_DIR,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
 
       let stdout = '';
       child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));

@@ -22,6 +22,9 @@
 # FuncMap indexer binary (built via `go build .` in funcmap/)
 funcmap/gotmpl-funcmap
 
+# Cross-compiled FunMap indexer binaries (built via `mise run build-funcmap`)
+bin/
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
