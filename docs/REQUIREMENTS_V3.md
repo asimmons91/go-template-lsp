@@ -29,9 +29,11 @@ infrastructure to exist first.
 ## 2. Feature requirements
 
 ### 2.1 Known-function-library plugin system
+
 **Source:** v2 §5, listed verbatim as a v3+ candidate ("Support for
 third-party templating libraries built on top of `html/template` ... could be
 a v3 'known function library' plugin system if there's demand").
+
 - **Behavior:** ship bundled signature data for popular `FuncMap` libraries
   (starting with Sprig) so completion works for their functions without
   static analysis needing to trace through that library's own source.
@@ -42,13 +44,15 @@ a v3 'known function library' plugin system if there's demand").
   additional libraries without touching the extension's core code.
 
 ### 2.2 Real FuncMap data-flow discovery
+
 **Source:** v1 §8 ("FuncMap discovery correctness... will not be found by
 static analysis. Document this as a known gap rather than attempting full
 data-flow analysis") — a limitation v2 only worked around (§3, "Manual
 FuncMap fallback" / `goTemplate.extraFuncs`), never actually resolved.
+
 - **Behavior:** catch more real-world FuncMap registration patterns than a
   bare composite literal — e.g. `funcs := template.FuncMap{...}; funcs["x"] =
-  myFunc; tmpl.Funcs(funcs)` — without requiring a manual `extraFuncs` entry.
+myFunc; tmpl.Funcs(funcs)` — without requiring a manual `extraFuncs` entry.
 - **Mechanism:** a light data-flow pass (via `go/ssa` or a narrower
   variable-assignment tracker over `go/ast`) that follows simple, local
   reassignment chains. Still won't catch a function that conditionally
@@ -61,9 +65,11 @@ FuncMap fallback" / `goTemplate.extraFuncs`), never actually resolved.
   literal.
 
 ### 2.3 Complete `$var` assignment tracking
+
 **Source:** v1 §8, verbatim: "`$var`-prefixed variable definition tracking is
 incomplete... for assignments outside of `range`" — flagged in v1, never
 mentioned again in v2 at all.
+
 - **Behavior:** `{{ $foo := $bar }}` and other top-level variable assignments
   (not just the ones implicitly bound inside a `range`) should resolve
   correctly in the transpiler, the same way nested-struct and range-element
@@ -74,10 +80,12 @@ mentioned again in v2 at all.
   so assignment tracking isn't a special case bolted on per construct.
 
 ### 2.4 Multi-module gopls process strategy
+
 **Source:** synthesis — connects v1 §8's gopls lifecycle limitation (handled
 for a single instance by v2 §3) with v2 §2.8's multi-root/multi-module
 support, which shipped without ever deciding how the Go-side delegate scales
 across multiple `go.mod` files.
+
 - **Decision needed:** whether one `gopls` instance can serve a whole
   multi-module workspace (recent `gopls` versions have workspace-level
   multi-module support) versus pooling one `gopls` process per module and
@@ -86,26 +94,35 @@ across multiple `go.mod` files.
   extend to the pooled case — a crash in one module's `gopls` process
   shouldn't take down completion for unrelated modules in the same
   workspace.
+- **Decision (M17):** pool one `gopls` process per module, keyed by the
+  directory of the nearest `go.mod`, and route each request to the client that
+  owns the file's module. This is the option that can deliver the crash
+  isolation the behavior above requires; a single shared instance would couple
+  every module's availability to one process.
 
 ## 3. Resolving v2's open questions
 
 ### 3.1 Generalize the autoescape classifier
+
 **Source:** v2 §7, Q1: "Is the autoescape classifier (§2.1) worth building
 fully...?" — phrased as a question about whether to build it fully, implying
 v2 may ship a partial version covering only the most common contexts (HTML
 text, attribute values).
+
 - v3 extends it to the remaining contexts v2's version likely skips: JS
   string literals inside `<script>`, CSS values inside `<style>`, URL
   contexts, and edge cases like `<script type="application/json">` where
   different escaping rules apply.
 
 ### 3.2 Retire redundant TextMate grammar rules
+
 **Source:** v2 §7, Q3, verbatim: "Does semantic tokens (§2.11) conflict with
 or duplicate the TextMate grammar from v1, and should the grammar be
 simplified once semantic tokens land?"
+
 - Once semantic tokens (v2 §2.11) are stable, simplify
-  `syntaxes/gotmpl.tmLanguage.json` down to only what semantic tokens
-  *can't* replace: the initial highlight shown before the language server
+  `syntaxes/gohtml.tmLanguage.json` down to only what semantic tokens
+  _can't_ replace: the initial highlight shown before the language server
   attaches, and the `embeddedLanguages` scope declarations that Emmet (v1
   §4.4a) and tag auto-closing (v1 §4.4b) both depend on. Remove the
   now-redundant keyword/variable coloring rules semantic tokens do more

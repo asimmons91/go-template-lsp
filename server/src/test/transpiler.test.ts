@@ -58,6 +58,53 @@ test('declares and references a $var', () => {
   assert.match(goSource, /_ = v_x\.City\n/);
 });
 
+test('resolves a $var bound to another $var through the chain', () => {
+  const { goSource } = transpileTemplate(
+    uri,
+    '{{ $bar := .Address }}{{ $foo := $bar }}{{ $foo.City }}',
+    gotype,
+  );
+  assert.match(goSource, /v_foo := v_bar\n/);
+  assert.match(goSource, /_ = v_foo\.City\n/);
+});
+
+test('resolves a multi-hop $var assignment chain', () => {
+  const { goSource } = transpileTemplate(
+    uri,
+    '{{ $x := .Name }}{{ $y := $x }}{{ $z := $y }}{{ $z.Field }}',
+    gotype,
+  );
+  assert.match(goSource, /v_z := v_y\n/);
+  assert.match(goSource, /_ = v_z\.Field\n/);
+});
+
+test('reassigns a $var inside a nested scope to the outer binding', () => {
+  const { goSource } = transpileTemplate(
+    uri,
+    '{{ $x := .Name }}{{if .C}}{{ $x = .Title }}{{end}}{{ $x }}',
+    gotype,
+  );
+  assert.match(goSource, /v_x := dot\.Name\n/);
+  assert.match(goSource, /v_x = dot\.Title\n/);
+  assert.doesNotMatch(goSource, /v_x := dot\.Title\n/);
+});
+
+test('narrows a single-variable range to the loop element', () => {
+  const { goSource } = transpileTemplate(
+    uri,
+    '{{range $v := .Items}}{{ $v.Title }}{{end}}',
+    gotype,
+  );
+  assert.match(goSource, /for _, it\d+ := range dot\.Items \{/);
+  assert.match(goSource, /_ = it\d+\.Title\n/);
+});
+
+test('surfaces an unbound $var as an undefined reference instead of interface{}', () => {
+  const { goSource } = transpileTemplate(uri, '{{ $foo := $bar }}{{ $foo.City }}', gotype);
+  assert.match(goSource, /v_foo := gotmplUndef_bar\n/);
+  assert.doesNotMatch(goSource, /interface\{\}/);
+});
+
 test('auto-closes an unclosed range so the generated Go is balanced', () => {
   const { goSource } = transpileTemplate(uri, '{{range .Items}}{{ .Title }}', gotype);
   assert.match(goSource, /for _, it0 := range dot\.Items \{/);

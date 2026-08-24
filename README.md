@@ -10,6 +10,7 @@ HTML/CSS/JS intellisense in the surrounding template body.
   its fields/methods inside `{{ }}` actions (GoLand-compatible convention).
 - Completion for custom functions registered via `template.FuncMap{...}` and
   `.Funcs(...)`, with real parameter/return types.
+- Bundled signature data for known function libraries (Sprig), so `tmpl.Funcs(sprig.FuncMap())` completes without tracing Sprig's source.
 - Go-to-definition, find-references, and completion for `{{define "name"}}`,
   `{{block "name"}}`, and `{{template "name" .}}` across the whole workspace.
 - HTML tag/attribute completion, CSS completion inside `<style>`, and JS/TS
@@ -51,6 +52,15 @@ disambiguate.
 - A working `go`/`gopls` installation on your `PATH`, or set
   `goTemplate.goplsPath` to an explicit gopls binary.
 
+## Multi-module workspaces
+
+The extension runs one `gopls` process per Go module — the directory of the
+`go.mod` nearest to a template file — and routes each file to its module's
+process. This isolates failures: a crashed or unresponsive `gopls` in one module
+is restarted on its own, without interrupting completion for unrelated modules
+in the same workspace. Template files that live outside any module fall back to
+their workspace folder (or the file's own directory) as the module root.
+
 ## Configuration
 
 - `goTemplate.goplsPath` — path to the gopls binary used for Go-side type
@@ -87,6 +97,27 @@ disambiguate.
   package qualifier to its import path for package-qualified types; `doc` is
   shown on hover. Scanned workspace functions always win over `extraFuncs` on a
   name collision.
+
+## Known-function libraries
+
+For popular `FuncMap` libraries, the extension ships bundled signature data so
+completion, signature help, and hover work for their functions without static
+analysis having to trace through the library's own source. When a known
+library's FuncMap is merged into a template — e.g.
+`tmpl.Funcs(sprig.FuncMap())` — the indexer detects the pattern and falls back
+to the bundled signatures.
+
+Sprig ships as the first bundled library (`FuncMap`, `TxtFuncMap`,
+`HtmlFuncMap`, and `GenericFuncMap`, for both the `/v3` and unversioned import
+paths). Workspace-scanned FuncMap literals always win over bundled signatures on
+a name collision.
+
+Each library is a JSON database under `indexer/signatures/` and is embedded into
+the workspace indexer at build time. To add a library, drop a new file there
+following the same format (an `id`, a `detect` list of
+`{ "package", "funcs" }` constructor pairs, and a `functions` list) and rebuild
+the indexer — no core code changes needed. The Sprig database is regenerated
+from the real Sprig module with `mise run gen-sprig`.
 
 ## Semantic highlighting
 
@@ -125,9 +156,13 @@ mise run package      # build a .vsix
 ## Known limitations
 
 - FuncMap functions registered dynamically (e.g. built from a loop or returned
-  from a helper) are not found by static analysis.
-- `$var` tracking is partial: `{{ $x := .Field }}` works, but a `$var` bound to
-  another unresolved `$var` degrades to `interface{}`.
+  from a helper that can produce different FuncMaps) are not found by static
+  analysis. Simple local reassignment chains and post-hoc
+  `funcs["name"] = fn` index assignments are followed.
+- `$var` tracking covers declarations and reassignments across nested scopes
+  (including single-variable `range`). A reference to a variable that is never
+  bound surfaces as an "undefined" diagnostic instead of silently degrading to
+  `interface{}`.
 - Split-tag conditionals are unresolvable by static masking. An unclosed-tag
   diagnostic is suppressed only when the open tag is directly adjacent to a
   conditional arm (`{{if}}`/`{{range}}`/`{{else}}`) and a matching close follows
