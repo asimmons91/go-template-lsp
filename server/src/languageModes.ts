@@ -1,26 +1,58 @@
-import { CompletionList, Diagnostic, Hover, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
+import {
+  CompletionList,
+  Diagnostic,
+  Hover,
+  Location,
+  Position,
+  ReferenceContext,
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { EmbeddedLanguageId, GoTemplateDocument, getDocumentRegions, getLanguageAtOffset } from './documentRegions';
+import {
+  EmbeddedLanguageId,
+  GoTemplateDocument,
+  getDocumentRegions,
+  getLanguageAtOffset,
+} from './documentRegions';
 import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
 import { getGoTemplateMode } from './modes/goTemplateMode';
 import { getFuncMapIndexer } from './funcmap/funcMapIndex';
 import { TemplateNameService } from './templateNameService';
+import { getAutoescapeDiagnostics } from './autoescape/classifier';
 
 export interface LanguageMode {
   getId(): EmbeddedLanguageId;
-  doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): CompletionList | Promise<CompletionList>;
-  doDefinition?(document: TextDocument, position: Position, regions: GoTemplateDocument): Location[] | undefined | Promise<Location[] | undefined>;
-  doHover?(document: TextDocument, position: Position, regions: GoTemplateDocument): Hover | undefined | Promise<Hover | undefined>;
+  doComplete(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): CompletionList | Promise<CompletionList>;
+  doDefinition?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): Location[] | undefined | Promise<Location[] | undefined>;
+  doHover?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): Hover | undefined | Promise<Hover | undefined>;
   doReferences?(
     document: TextDocument,
     position: Position,
     regions: GoTemplateDocument,
-    context: ReferenceContext
+    context: ReferenceContext,
   ): Location[] | undefined | Promise<Location[] | undefined>;
-  doDiagnostics?(document: TextDocument, regions: GoTemplateDocument): Diagnostic[] | Promise<Diagnostic[]>;
-  doTagComplete?(document: TextDocument, position: Position, regions: GoTemplateDocument): string | null;
+  doDiagnostics?(
+    document: TextDocument,
+    regions: GoTemplateDocument,
+  ): Diagnostic[] | Promise<Diagnostic[]>;
+  doTagComplete?(
+    document: TextDocument,
+    position: Position,
+    regions: GoTemplateDocument,
+  ): string | null;
 }
 
 export interface ModeAtPosition {
@@ -53,7 +85,7 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
     html: htmlMode,
     css: cssMode,
     javascript: jsMode,
-    gotemplate: goTemplateMode
+    gotemplate: goTemplateMode,
   };
 
   return {
@@ -71,6 +103,7 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
         if (!mode?.doDiagnostics) continue;
         all.push(...(await mode.doDiagnostics(document, regions)));
       }
+      all.push(...getAutoescapeDiagnostics(document));
       return all;
     },
     doTagComplete(document, position) {
@@ -99,6 +132,6 @@ export function getLanguageModes(goplsPath: string, rootUri: string | undefined)
     dispose() {
       jsMode.dispose();
       goTemplateMode.dispose();
-    }
+    },
   };
 }
