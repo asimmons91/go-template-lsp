@@ -1,8 +1,17 @@
-import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Location, Position, Range, ReferenceContext } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, CompletionList, Diagnostic, DiagnosticSeverity, Hover, Location, Position, Range, ReferenceContext } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { LanguageMode } from '../languageModes';
 import { GoTemplateDocument } from '../documentRegions';
 import { parseGotypeComment } from '../gotype';
+import {
+  completePackagePath,
+  completeStructNames,
+  findGotypeValueRange,
+  findGotypeValueSpan,
+  GotypeValueSpan,
+  resolveGotypeType,
+  splitGotypeValue
+} from '../gotypeCompletion';
 import { parseTemplate, findPipelineAtOffset, validateTemplateSyntax } from '../templateParser';
 import { scanTemplateDirectives } from '../templateDirectives';
 import { parsePipeline } from '../pipeline';
@@ -32,6 +41,11 @@ export function getGoTemplateMode(
 
       const span = regions.actionSpans.find((s) => s.start <= offset && offset <= s.end);
       if (!span) return CompletionList.create([], false);
+
+      const gotypeSpan = findGotypeValueSpan(text, offset);
+      if (gotypeSpan) {
+        return completeGotypeValue(client, document, offset, gotypeSpan);
+      }
 
       const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
       if (directive && directive.keyword === 'template') {
@@ -72,9 +86,24 @@ export function getGoTemplateMode(
       const text = document.getText();
       const offset = document.offsetAt(position);
       const directive = scanTemplateDirectives(text).find((d) => d.nameStart <= offset && offset <= d.nameEnd);
-      if (!directive) return undefined;
-      await templateNames.ensureReady();
-      return templateNames.getDefinitions(directive.name);
+      if (directive) {
+        await templateNames.ensureReady();
+        return templateNames.getDefinitions(directive.name);
+      }
+
+      const gotype = parseGotypeComment(text);
+      if (!gotype) return undefined;
+
+      const nodes = parseTemplate(text);
+      const pipe = findPipelineAtOffset(nodes, offset);
+      if (!pipe) return undefined;
+
+      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype);
+      const goOffset = mapOffset(offset);
+      if (goOffset < 0) return undefined;
+
+      await client.openOrUpdate(uri, goSource);
+      return client.definition(uri, resolveGoOffset(goSource, goOffset));
     },
 
     async doReferences(
@@ -92,20 +121,102 @@ export function getGoTemplateMode(
       return context.includeDeclaration ? refs.concat(templateNames.getDefinitions(directive.name)) : refs;
     },
 
-    doDiagnostics(document: TextDocument): Diagnostic[] {
+    async doHover(document: TextDocument, position: Position): Promise<Hover | undefined> {
       const text = document.getText();
-      return validateTemplateSyntax(text).map((issue) => ({
+      const offset = document.offsetAt(position);
+
+      const gotype = parseGotypeComment(text);
+      if (!gotype) return undefined;
+
+      const nodes = parseTemplate(text);
+      const pipe = findPipelineAtOffset(nodes, offset);
+      if (!pipe) return undefined;
+
+      const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype);
+      const goOffset = mapOffset(offset);
+      if (goOffset < 0) return undefined;
+
+      await client.openOrUpdate(uri, goSource);
+      return client.hover(uri, resolveGoOffset(goSource, goOffset));
+    },
+
+    async doDiagnostics(document: TextDocument): Promise<Diagnostic[]> {
+      const text = document.getText();
+      const diagnostics: Diagnostic[] = validateTemplateSyntax(text).map((issue) => ({
         range: Range.create(document.positionAt(issue.start), document.positionAt(issue.end)),
         message: issue.message,
         severity: DiagnosticSeverity.Error,
         source: 'go-template'
       }));
+
+      const gotype = parseGotypeComment(text);
+      if (!gotype) return diagnostics;
+
+      if (!(await client.health())) return diagnostics;
+
+      const resolved = await resolveGotypeType(client, document.uri, gotype.importPath, gotype.typeName);
+      if (resolved) return diagnostics;
+
+      const span = findGotypeValueRange(text);
+      const range = span
+        ? Range.create(document.positionAt(span.start), document.positionAt(span.end))
+        : Range.create({ line: 0, character: 0 }, { line: 0, character: 0 });
+
+      diagnostics.push({
+        range,
+        message: `gotype type "${gotype.importPath}.${gotype.typeName}" not found or not a struct type.`,
+        severity: DiagnosticSeverity.Error,
+        source: 'go-template'
+      });
+      return diagnostics;
     },
 
     dispose() {
       client.dispose();
     }
   };
+}
+
+/**
+ * gopls resolves the token *containing* a position, but `mapOffset` returns the
+ * Go boundary *after* the character under the template cursor. When that boundary
+ * lands just past an identifier (the common "cursor at the end of a field name"
+ * case), step back one so the position points inside the token instead of at the
+ * following whitespace/newline.
+ */
+function resolveGoOffset(goSource: string, goOffset: number): number {
+  if (goOffset > 0 && /[A-Za-z0-9_]/.test(goSource[goOffset - 1])) {
+    return goOffset - 1;
+  }
+  return goOffset;
+}
+
+/**
+ * Handles §4.1a completion while authoring the `gotype:` value itself: package
+ * paths before the type-separator dot, exported struct names after it. Each item
+ * carries a textEdit scoped to the template so acceptance replaces only the
+ * partial value up to the cursor.
+ */
+async function completeGotypeValue(
+  client: GoplsClient,
+  document: TextDocument,
+  offset: number,
+  span: GotypeValueSpan
+): Promise<CompletionList> {
+  const { packagePath, typePrefix, hasTypeSeparator } = splitGotypeValue(span.value);
+
+  if (!hasTypeSeparator) {
+    const items = await completePackagePath(client, document.uri, packagePath);
+    const range = Range.create(document.positionAt(span.start), document.positionAt(offset));
+    for (const item of items) item.textEdit = { range, newText: item.label };
+    return CompletionList.create(items, true);
+  }
+
+  const items = await completeStructNames(client, document.uri, packagePath, typePrefix);
+  const typeStart = span.start + packagePath.length + 1;
+  const range = Range.create(document.positionAt(typeStart), document.positionAt(offset));
+  for (const item of items) item.textEdit = { range, newText: item.label };
+  return CompletionList.create(items, true);
 }
 
 /**

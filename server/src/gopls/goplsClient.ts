@@ -5,12 +5,16 @@ import {
   StreamMessageReader,
   StreamMessageWriter
 } from 'vscode-jsonrpc/node';
-import { CompletionItem, CompletionList } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionList, Hover, Location } from 'vscode-languageserver/node';
 
 export interface GoplsClient {
   /** Opens the URI on first use, otherwise pushes a full-text update. */
   openOrUpdate(uri: string, text: string): Promise<void>;
   completion(uri: string, offset: number): Promise<CompletionList>;
+  definition(uri: string, offset: number): Promise<Location[]>;
+  hover(uri: string, offset: number): Promise<Hover | undefined>;
+  /** Resolves true once a gopls child process has been successfully initialized. */
+  health(): Promise<boolean>;
   dispose(): void;
 }
 
@@ -108,6 +112,44 @@ export function createGoplsClient(goplsPath: string, rootUri: string | undefined
       } catch {
         return CompletionList.create([], false);
       }
+    },
+
+    async definition(uri, offset) {
+      const conn = await ensureStarted();
+      if (!conn) return [];
+
+      try {
+        const text = openText.get(uri) ?? '';
+        const response = await conn.sendRequest<Location[] | Location | null>('textDocument/definition', {
+          textDocument: { uri },
+          position: offsetToPosition(text, offset)
+        });
+        if (!response) return [];
+        if (Array.isArray(response)) return response;
+        return [response];
+      } catch {
+        return [];
+      }
+    },
+
+    async hover(uri, offset) {
+      const conn = await ensureStarted();
+      if (!conn) return undefined;
+
+      try {
+        const text = openText.get(uri) ?? '';
+        const response = await conn.sendRequest<Hover | null>('textDocument/hover', {
+          textDocument: { uri },
+          position: offsetToPosition(text, offset)
+        });
+        return response ?? undefined;
+      } catch {
+        return undefined;
+      }
+    },
+
+    async health() {
+      return (await ensureStarted()) !== undefined;
     },
 
     dispose() {

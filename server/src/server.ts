@@ -54,7 +54,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
         triggerCharacters: ['<', '"', "'", '=', '/', '.', ':', '-', '@']
       },
       definitionProvider: true,
-      referencesProvider: true
+      referencesProvider: true,
+      hoverProvider: true
     }
   };
 });
@@ -87,6 +88,16 @@ connection.onReferences(async (params) => {
   if (!result?.mode.doReferences) return null;
 
   return (await result.mode.doReferences(document, params.position, result.regions, params.context)) ?? null;
+});
+
+connection.onHover(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const result = languageModes.getModeAtPosition(document, params.position);
+  if (!result?.mode.doHover) return null;
+
+  return (await result.mode.doHover(document, params.position, result.regions)) ?? null;
 });
 
 documents.onDidOpen((e) => {

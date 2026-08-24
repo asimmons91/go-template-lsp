@@ -23,7 +23,7 @@ function sanitizeIdentifier(name: string): string {
  * file to join whatever package (if any) already lives there. Falls back to a name
  * derived from the directory itself when no .go file exists yet.
  */
-function resolvePackageName(documentUri: string): string {
+export function resolvePackageName(documentUri: string): string {
   const dir = path.dirname(filePathFromUri(documentUri));
   try {
     const entries = fs.readdirSync(dir);

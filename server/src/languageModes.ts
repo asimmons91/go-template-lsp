@@ -1,4 +1,4 @@
-import { CompletionList, Diagnostic, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
+import { CompletionList, Diagnostic, Hover, Location, Position, ReferenceContext } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { EmbeddedLanguageId, GoTemplateDocument, getDocumentRegions, getLanguageAtOffset } from './documentRegions';
 import { getHTMLMode } from './modes/htmlMode';
@@ -12,6 +12,7 @@ export interface LanguageMode {
   getId(): EmbeddedLanguageId;
   doComplete(document: TextDocument, position: Position, regions: GoTemplateDocument): CompletionList | Promise<CompletionList>;
   doDefinition?(document: TextDocument, position: Position, regions: GoTemplateDocument): Location[] | undefined | Promise<Location[] | undefined>;
+  doHover?(document: TextDocument, position: Position, regions: GoTemplateDocument): Hover | undefined | Promise<Hover | undefined>;
   doReferences?(
     document: TextDocument,
     position: Position,
