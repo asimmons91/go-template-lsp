@@ -112,13 +112,12 @@
         }
       }
     },
-    "configurationDefaults": {
-      "emmet.includeLanguages": {
-        "gotmpl": "html"
-      },
-      "emmet.showAbbreviationSuggestions": false
-    },
     "keybindings": [
+      {
+        "key": "tab",
+        "command": "gotmpl.expandEmmet",
+        "when": "editorLangId == gotmpl && !gotmpl.inAction && config.emmet.triggerExpansionOnTab && editorTextFocus && !editorReadonly && !inSnippetMode && !suggestWidgetVisible && !editorTabMovesFocus"
+      },
       {
         "key": "tab",
         "command": "tab",

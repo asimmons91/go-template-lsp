@@ -16,12 +16,14 @@ import {
   EmbeddedLanguageId,
   GoTemplateDocument,
   getDocumentRegions,
+  getEmbeddedDocument,
   getLanguageAtOffset,
 } from './documentRegions';
 import { getHTMLMode } from './modes/htmlMode';
 import { getCSSMode } from './modes/cssMode';
 import { getJSMode } from './modes/jsMode';
 import { getGoTemplateMode } from './modes/goTemplateMode';
+import { EmmetExpansion, getEmmetExpansion } from './modes/emmet';
 import { getFuncMapIndexer, FuncMapEntry } from './indexer/funcMapIndex';
 import { getGoIndexRunner } from './goIndex';
 import { getExecuteSiteIndex } from './inference/executeSiteIndex';
@@ -94,6 +96,7 @@ export interface LanguageModes {
   getSemanticTokens(document: TextDocument): Promise<SemanticTokens>;
   doDiagnostics(document: TextDocument): Promise<Diagnostic[]>;
   doTagComplete(document: TextDocument, position: Position): string | null;
+  doEmmetExpand(document: TextDocument, position: Position): EmmetExpansion | null;
   onDocumentRemoved(document: TextDocument): void;
   onDocumentOpened(document: TextDocument): void;
   onDocumentChanged(document: TextDocument): void;
@@ -163,6 +166,17 @@ export function getLanguageModes(
       const regions = getDocumentRegions(document);
       if (getLanguageAtOffset(regions, document.offsetAt(position)) === 'gotemplate') return null;
       return htmlMode.doTagComplete?.(document, position, regions) ?? null;
+    },
+    doEmmetExpand(document, position) {
+      const regions = getDocumentRegions(document);
+      const languageId = getLanguageAtOffset(regions, document.offsetAt(position));
+      if (languageId === 'html') {
+        return getEmmetExpansion(regions.maskedDocument, position, 'html');
+      }
+      if (languageId === 'css') {
+        return getEmmetExpansion(getEmbeddedDocument(document, regions, 'css'), position, 'css');
+      }
+      return null;
     },
     onDocumentRemoved(document) {
       jsMode.onDocumentRemoved(document);
