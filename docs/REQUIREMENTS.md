@@ -389,6 +389,7 @@ be written.)
   related but distinct feature — editing `<p>` to `<div>` and having the
   existing `</p>` update live to `</div>` — is VSCode's separate "linked
   editing" capability (`textDocument/linkedEditingRange` in the LSP spec, a
-  real standard request unlike `html/tag`). Worth its own small requirement
-  once §4.4b ships, since it's cheap to add on top of the same HTML region
-  detection and people tend to expect both together.
+  real standard request unlike `html/tag`). Specified as its own v2 feature —
+  see `V2_REQUIREMENTS.md` §2.12 — rather than left open here, since it's
+  cheap to add on top of the same HTML region detection this milestone
+  already builds.

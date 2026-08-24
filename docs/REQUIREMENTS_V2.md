@@ -3,12 +3,15 @@
 ## 1. Scope and relationship to v1
 
 v2 assumes v1's milestones (M1–M7 in `REQUIREMENTS.md`) are complete: `gotype:`-based
-completion, FuncMap completion, define/block/template navigation, HTML/CSS/JS
-delegation, and merged diagnostics all work on typical files. v2 addresses the
-items v1 explicitly deferred — its non-goals (§3), its flagged risks (§8), and its
-open questions (§11) — plus the reliability and tooling gaps that only become
-visible once the extension is used on a real, larger codebase rather than
-fixture files.
+completion (including completion of the `gotype:` value itself, §4.1a), FuncMap
+completion, define/block/template navigation, HTML/CSS/JS delegation with Emmet
+support (§4.4a) and tag auto-closing (§4.4b), and merged diagnostics all work on
+typical files. v2 addresses the items v1 explicitly deferred — its non-goals (§3),
+its flagged risks (§8), and its open questions (§11) — plus the reliability and
+tooling gaps that only become visible once the extension is used on a real,
+larger codebase rather than fixture files. One item below (§2.12) is a direct
+promotion of a v1 open question rather than a pre-existing v2 item, added here
+after v1 picked up tag auto-closing.
 
 ## 2. Feature requirements
 
@@ -34,6 +37,11 @@ them to the template file(s) they operate on, and infer the root type from `X`.
   sites, surface a non-blocking hint listing all inferred types rather than
   silently picking one — mirrors GoLand's ambiguity handling.
 - The explicit `gotype:` comment, when present, always wins over inference.
+- **Not to be confused with v1 §4.1a**, which makes *writing* a `gotype:`
+  comment easier (autocompleting the package path and struct name as you
+  type). This item is about the case where no comment is written at all —
+  the two are complementary, not overlapping: §4.1a helps once you've decided
+  to write the comment; this lets you skip writing one in the first place.
 
 ### 2.3 `text/template` (non-HTML) support
 Extend the language ID / grammar to a second file type (or a settings-driven
@@ -88,6 +96,23 @@ so that, e.g., a `.Field` that fails to resolve on the current `gotype:`-bound
 struct is colored differently from one that resolves correctly — something a
 context-free grammar can't express.
 
+### 2.12 Linked editing for HTML tag pairs
+Promoted from an open question v1 raised once it picked up tag auto-closing
+(§4.4b of `REQUIREMENTS.md`). Editing an opening tag's name (`<p>` → `<div>`)
+should live-update the matching closing tag, the same experience VSCode
+already gives plain `.html` files.
+- **Mechanism:** implement `textDocument/linkedEditingRange` — unlike tag
+  auto-closing's `html/tag`, this is a real standard LSP request, so no custom
+  client/server protocol is needed, only a handler in `htmlMode.ts` returning
+  the matched range pair. It reuses the same masked-HTML-document and region
+  detection already built for §4.4b, so it's a small addition once that
+  milestone has shipped rather than new infrastructure.
+- **Scope check:** this applies to HTML tag pairs only. It does not extend to
+  `{{define "name"}}` / `{{end}}` or template name strings — renaming those is
+  already covered by the workspace-edit-based rename in §2.4, which is the
+  correct mechanism for a change that should persist, unlike linked editing's
+  live-typing-only mirror.
+
 ## 3. Reliability and performance requirements
 
 - **gopls health-check/restart.** Detect a crashed or unresponsive `gopls`
@@ -114,8 +139,13 @@ context-free grammar can't express.
 - **Fixture-based test harness.** A set of representative `.go` + `.gotmpl`
   fixture pairs with expected completion/hover/diagnostic snapshots, runnable
   in CI, covering: nested structs, `range` over slices/maps, FuncMap
-  functions, cross-file `define`/`template`, and at least one known split-tag
-  case (to confirm it's suppressed, not to confirm it's fixed).
+  functions, cross-file `define`/`template`, at least one known split-tag
+  case (to confirm it's suppressed, not to confirm it's fixed), Emmet
+  expansion in both HTML and `<style>` contexts (§4.4a of v1), and tag
+  auto-closing including at least one void-element case that must *not* get
+  a closing tag (§4.4b of v1). The latter two were verified manually in v1's
+  M2 — this harness is what turns that one-time verification into a
+  regression guard.
 - **CI pipeline** running the test harness plus `tsc --noEmit` and `go vet` on
   any Go helper code, on every PR.
 - **Opt-in crash/error reporting** for the language server process, off by
@@ -136,7 +166,10 @@ context-free grammar can't express.
    of known `html/template` compile-time escaping errors.
 9. **M9 — Execute()-site type inference** (§2.2) as a fallback path.
 10. **M10 — Rename propagation** (§2.4), both directions.
-11. **M11 — Signature help + hover docs** (§2.5, §2.6).
+11. **M11 — Signature help + hover docs + linked editing** (§2.5, §2.6, §2.12)
+    — three small, independent editor-feel improvements bundled together since
+    none require new infrastructure beyond what earlier milestones already
+    built.
 12. **M12 — Multi-root/multi-module support** (§2.8) and configurable template
     roots (§2.9).
 13. **M13 — gopls resiliency + incremental indexing** (§3), validated with a
