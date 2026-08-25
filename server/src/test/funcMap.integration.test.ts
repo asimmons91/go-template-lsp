@@ -155,3 +155,33 @@ test('go to definition on a builtin function is a no-op', async () => {
     `expected no definition for a builtin, got: ${JSON.stringify(defs)}`,
   );
 });
+
+test('goes to definition on the gotype: comment type', async () => {
+  const file = path.join(fixtureRoot, 'views', 'layout.gohtml');
+  const text = fs.readFileSync(file, 'utf8');
+  const token = 'gotype: example.com/gotypefixture/model.User';
+  const cursorOffset = text.indexOf(token) + token.length;
+  assert.ok(cursorOffset > token.length, `fixture must contain "${token}"`);
+
+  const document = TextDocument.create(`file://${file}`, 'gotmpl', 1, text);
+  const position = document.positionAt(cursorOffset);
+
+  const languageModes = getLanguageModes('gopls', `file://${fixtureRoot}`);
+  try {
+    const result = languageModes.getModeAtPosition(document, position);
+    assert.ok(result, 'expected the gotemplate mode inside the gotype comment');
+    assert.ok(result.mode.doDefinition, 'expected the gotemplate mode to support doDefinition');
+    const defs = await result.mode.doDefinition(document, position, result.regions);
+    assert.ok(defs && defs.length === 1, `expected one definition, got: ${JSON.stringify(defs)}`);
+    assert.ok(
+      defs[0].uri.endsWith('/model/model.go'),
+      `expected definition in model/model.go, got: ${defs[0].uri}`,
+    );
+    assert.ok(
+      !defs[0].uri.includes('.gotype_members.go'),
+      `definition must not point at a synthetic file, got: ${defs[0].uri}`,
+    );
+  } finally {
+    languageModes.dispose();
+  }
+});

@@ -28,6 +28,7 @@ import {
   findGotypeValueRange,
   findGotypeValueSpan,
   GotypeValueSpan,
+  resolveGotypeDefinition,
   resolveGotypeType,
   splitGotypeValue,
 } from '../gotypeCompletion';
@@ -165,6 +166,14 @@ export function getGoTemplateMode(
     ): Promise<Location[] | undefined> {
       const text = document.getText();
       const offset = document.offsetAt(position);
+
+      const gotypeSpan = findGotypeValueSpan(text, offset);
+      if (gotypeSpan) {
+        const gotype = parseGotypeComment(text);
+        if (!gotype) return undefined;
+        return resolveGotypeDefinition(client, document.uri, gotype);
+      }
+
       const directive = scanTemplateDirectives(text).find(
         (d) => d.nameStart <= offset && offset <= d.nameEnd,
       );
