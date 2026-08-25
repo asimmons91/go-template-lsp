@@ -904,10 +904,11 @@ async function hoverFunctionName(
     if (!entry) entry = (await funcMapIndexer.getIndex()).get(cmd.name);
     if (!entry) return undefined;
 
+    const parts = [`\`\`\`go\n${formatSignature(entry)}\n\`\`\``];
     if (entry.doc?.trim()) {
-      return { contents: { kind: 'markdown', value: entry.doc.trim() } };
+      parts.push(entry.doc.trim());
     }
-    return { contents: { kind: 'markdown', value: `\`\`\`go\n${formatSignature(entry)}\n\`\`\`` } };
+    return { contents: { kind: 'markdown', value: parts.join('\n\n') } };
   }
   return undefined;
 }

@@ -90,7 +90,7 @@ test('hovers a FuncMap function doc comment from the indexer', async () => {
     );
     assert.equal(
       hoverText(hover),
-      'upperLen upper-cases its input and reports the resulting length.',
+      '```go\nfunc(s string) int\n```\n\nupperLen upper-cases its input and reports the resulting length.',
     );
   } finally {
     languageModes.dispose();
