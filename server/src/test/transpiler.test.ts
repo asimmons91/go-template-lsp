@@ -241,3 +241,30 @@ test('emits with else as a valid scope block, not a bare-block else', () => {
   assert.doesNotMatch(goSource, /\} else \{/);
   assert.match(goSource, /_ = dot\.Name\n/);
 });
+
+test('maps an undefined function name in a pipe back to the name', () => {
+  const text = '{{ .Name | sh }}';
+  const { goSource, mapGoRange } = transpileTemplate(uri, text, gotype);
+  const goStart = goSource.indexOf('sh(');
+  const mapped = mapGoRange(goStart, goStart + 2);
+  assert.ok(mapped, 'expected the sh token to map back into the template');
+  assert.equal(text.slice(mapped.start, mapped.end), 'sh');
+});
+
+test('maps an undefined leading function name to a non-empty range', () => {
+  const text = '{{ sh "x" }}';
+  const { goSource, mapGoRange } = transpileTemplate(uri, text, gotype);
+  const goStart = goSource.indexOf('sh(');
+  const mapped = mapGoRange(goStart, goStart + 2);
+  assert.ok(mapped, 'expected the sh token to map back into the template');
+  assert.equal(text.slice(mapped.start, mapped.end), 'sh');
+});
+
+test('still maps a value field inside a piped call', () => {
+  const text = '{{ .Name | sh }}';
+  const { goSource, mapGoRange } = transpileTemplate(uri, text, gotype);
+  const goStart = goSource.indexOf('dot.Name') + 'dot.'.length;
+  const mapped = mapGoRange(goStart, goStart + 4);
+  assert.ok(mapped, 'expected the Name field to map back into the template');
+  assert.equal(text.slice(mapped.start, mapped.end), 'Name');
+});
