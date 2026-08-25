@@ -323,7 +323,13 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push('\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+        segments.push({
+          pipeStart: node.pipeStart,
+          pipeEnd: node.pipeEnd,
+          goStart,
+          goLength: go.length,
+          charMap,
+        });
         break;
       }
       case 'var': {
@@ -346,7 +352,13 @@ function emitNodes(
         push(go);
         push('\n');
         push(`\t_ = ${scope.vars.get(node.name) ?? undefinedVarRef(node.name)}\n`);
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+        segments.push({
+          pipeStart: node.pipeStart,
+          pipeEnd: node.pipeEnd,
+          goStart,
+          goLength: go.length,
+          charMap,
+        });
         break;
       }
       case 'if': {
@@ -355,7 +367,13 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push(' {\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+        segments.push({
+          pipeStart: node.pipeStart,
+          pipeEnd: node.pipeEnd,
+          goStart,
+          goLength: go.length,
+          charMap,
+        });
         emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
         push('\t}\n');
         if (node.elseBody && node.elseBody.length > 0) {
@@ -375,7 +393,13 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push(' {\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+        segments.push({
+          pipeStart: node.pipeStart,
+          pipeEnd: node.pipeEnd,
+          goStart,
+          goLength: go.length,
+          charMap,
+        });
 
         const loopScope = childScope(scope, itVar);
         if (vars) {
@@ -407,7 +431,13 @@ function emitNodes(
           push(go);
           push('\n');
           push(`\t\t_ = ${wVar}\n`);
-          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+          segments.push({
+            pipeStart: node.pipeStart,
+            pipeEnd: node.pipeEnd,
+            goStart,
+            goLength: go.length,
+            charMap,
+          });
 
           const withScope = node.var ? childScope(scope) : childScope(scope, wVar);
           if (node.var) withScope.vars.set(node.var, wVar);
@@ -450,7 +480,13 @@ function emitNodes(
           push(go);
           push('\n');
           push(`\t\t_ = ${wVar}\n`);
-          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
+          segments.push({
+            pipeStart: node.pipeStart,
+            pipeEnd: node.pipeEnd,
+            goStart,
+            goLength: go.length,
+            charMap,
+          });
 
           emitNodes(parts, segments, node.body, childScope(scope, wVar), nextId, state);
           push('\t}\n');
