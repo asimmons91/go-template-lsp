@@ -547,10 +547,14 @@ export function findPipelineAtOffset(
       if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
         return { pipeline: node.pipeline, pipeStart: node.pipeStart };
       }
-      return findPipelineAtOffset(node.body, offset);
+      const found = findPipelineAtOffset(node.body, offset);
+      if (found) return found;
+      continue;
     }
     if (node.kind === 'define') {
-      return findPipelineAtOffset(node.body, offset);
+      const found = findPipelineAtOffset(node.body, offset);
+      if (found) return found;
+      continue;
     }
   }
   return undefined;

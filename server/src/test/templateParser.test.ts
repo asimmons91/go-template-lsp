@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { parseTemplate, scanActions, TemplateNode } from '../templateParser';
+import { parseTemplate, scanActions, findPipelineAtOffset, TemplateNode } from '../templateParser';
 
 function single(text: string): TemplateNode {
   const nodes = parseTemplate(text);
@@ -115,6 +115,30 @@ test('parses a block name and pipeline', () => {
   assert.equal(node.name, 'content');
   assert.equal(node.pipeline, '.Address');
   assert.equal(node.body.length, 1);
+});
+
+test('finds a pipeline in an action after a block', () => {
+  const text = '{{block "a" .}}{{ .X }}{{end}}\n{{ .Y }}';
+  const nodes = parseTemplate(text);
+  const pipe = findPipelineAtOffset(nodes, text.indexOf('.Y') + 1);
+  assert.ok(pipe, 'expected a pipeline after the block');
+  assert.equal(pipe.pipeline, '.Y');
+});
+
+test('finds a pipeline in a second sibling block', () => {
+  const text = '{{block "a" .}}{{end}}\n{{block "b" .}}{{ .Z }}{{end}}';
+  const nodes = parseTemplate(text);
+  const pipe = findPipelineAtOffset(nodes, text.indexOf('.Z') + 1);
+  assert.ok(pipe, 'expected a pipeline in the second block');
+  assert.equal(pipe.pipeline, '.Z');
+});
+
+test('finds a pipeline in an action after a define', () => {
+  const text = '{{define "x"}}{{ .X }}{{end}}\n{{ .Y }}';
+  const nodes = parseTemplate(text);
+  const pipe = findPipelineAtOffset(nodes, text.indexOf('.Y') + 1);
+  assert.ok(pipe, 'expected a pipeline after the define');
+  assert.equal(pipe.pipeline, '.Y');
 });
 
 test('does not end a span on }} inside an action comment', () => {
