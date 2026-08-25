@@ -55,6 +55,14 @@ test('emmet expansion returns null inside a {{ }} action', () => {
   assert.equal(languageModes.doEmmetExpand(document, position), null);
 });
 
+test('emmet completion items do not appear inside a <style> block', () => {
+  const languageModes = getLanguageModes('gopls', undefined);
+  const { document, position } = makeDocument('file:///f.gohtml', '<style>m10|</style>');
+  assert.equal(languageModes.getModeAtPosition(document, position)?.mode.getId(), 'css');
+  const list = completeAt(languageModes, document, position);
+  assert.ok(list.items.every((i) => i.detail !== 'Emmet Abbreviation'));
+});
+
 test('emmet expansion uses CSS syntax inside a <style> block', () => {
   const languageModes = getLanguageModes('gopls', undefined);
   const { document, position } = makeDocument('file:///e.gohtml', '<style>m10|</style>');

@@ -39,6 +39,10 @@ run = [
 description = "Compile the TypeScript client and server"
 run = "npm run compile"
 
+[tasks.watch]
+description = "Watch-compile the TypeScript client and server"
+run = "npm run watch"
+
 [tasks.lint]
 description = "Lint the TypeScript client and server with ESLint"
 run = "npm run lint"

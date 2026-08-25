@@ -33,6 +33,9 @@ func TestScanSprigFixture(t *testing.T) {
 	if len(upper.Results) != 1 || upper.Results[0] != "string" {
 		t.Fatalf("upper results = %v, want [string]", upper.Results)
 	}
+	if upper.File != "" {
+		t.Fatalf("upper.File = %q, want empty (bundled signature-database entries have no declaration syntax)", upper.File)
+	}
 
 	b64enc, ok := byName["b64enc"]
 	if !ok {

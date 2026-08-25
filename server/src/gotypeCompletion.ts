@@ -1,5 +1,6 @@
-import { CompletionItem, CompletionItemKind } from 'vscode-languageserver/node';
+import { CompletionItem, CompletionItemKind, Location } from 'vscode-languageserver/node';
 import { GoplsClient } from './gopls/goplsClient';
+import { GotypeDescriptor } from './gotype';
 import { scanActions } from './templateParser';
 import { resolvePackageName } from './transpiler';
 
@@ -188,4 +189,26 @@ export async function resolveGotypeType(
 ): Promise<boolean> {
   const items = await completeStructNames(client, documentUri, importPath, typeName);
   return items.some((item) => item.label === typeName);
+}
+
+/**
+ * Resolves the Go declaration a `gotype:` comment points at, by navigating gopls
+ * from a synthetic `var _ = gotmpl0.<typeName>` reference back to the real
+ * declaration. Mirrors `completeStructNames` but asks for `definition` instead of
+ * `completion`, returning only real (non-synthetic) locations.
+ */
+export async function resolveGotypeDefinition(
+  client: GoplsClient,
+  documentUri: string,
+  gotype: GotypeDescriptor,
+): Promise<Location[] | undefined> {
+  const uri = `${documentUri}${MEMBER_SYNTHETIC_SUFFIX}`;
+  const source = `package ${resolvePackageName(documentUri)}\n\nimport gotmpl0 "${gotype.importPath}"\n\nvar _ = gotmpl0.${gotype.typeName}`;
+  await client.openOrUpdate(uri, source);
+
+  // The type name sits at the end of the synthetic reference; step one char back
+  // so the cursor lands inside the identifier token rather than past it.
+  const defs = await client.definition(uri, source.length - 1);
+  const filtered = defs.filter((d) => !d.uri.endsWith(MEMBER_SYNTHETIC_SUFFIX));
+  return filtered.length > 0 ? filtered : undefined;
 }

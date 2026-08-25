@@ -33,3 +33,17 @@ test('accepts balanced blocks', () => {
 test('accepts define/block bodies with nested conditionals', () => {
   assert.equal(validateTemplateSyntax('{{define "x"}}{{if .Y}}{{end}}{{end}}').length, 0);
 });
+
+test('reports an {{else}} inside a {{block}} clause', () => {
+  const issues = validateTemplateSyntax(
+    '{{block "content" .Address}}{{ .C }}{{else}}{{ .N }}{{end}}',
+  );
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].message, 'unexpected {{else}} in block clause');
+});
+
+test('reports an {{else}} inside a {{define}} clause', () => {
+  const issues = validateTemplateSyntax('{{define "x"}}a{{else}}b{{end}}');
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].message, 'unexpected {{else}} in define clause');
+});

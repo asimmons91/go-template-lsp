@@ -15,6 +15,14 @@ export interface FuncMapEntry {
   imports?: Record<string, string>;
   /** Go doc comment on the function's declaration, when declared in the workspace. */
   doc?: string;
+  /**
+   * Declaration location (0-based line/character, matching LSP `Position`),
+   * when the indexer could resolve one. Absent for bundled/known-library
+   * entries (e.g. Sprig) that have no loaded declaration syntax.
+   */
+  file?: string;
+  line?: number;
+  character?: number;
 }
 
 export interface InferredType {

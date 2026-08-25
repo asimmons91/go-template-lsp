@@ -139,8 +139,11 @@ region-aware: the server already routes each offset to `html`, `css`, or
     whole file — including inside `{{ }}` — and its suggestions have no
     per-position opt-out. So the extension does **not** use the built-in
     engine for `.gotmpl`; instead the server merges Emmet completions into the
-    HTML and CSS modes (`@vscode/emmet-helper`'s `doComplete`) and exposes
-    expansion through a custom `emmet/expandAbbreviation` request.
+    HTML mode (`@vscode/emmet-helper`'s `doComplete`) and exposes expansion
+    through a custom `emmet/expandAbbreviation` request. Emmet completions are
+    deliberately **not** merged into the CSS mode, so `<style>` blocks only get
+    CSS completion from the CSS language service; CSS Emmet still works via Tab
+    expansion (see §4.4a Behavior above).
   - Because those modes are only reached when the offset resolves to an
     `html`/`css` region, Emmet structurally cannot fire inside `{{ }}`.
     Expansion (Tab) is driven by a client keybinding that sends

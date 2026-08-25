@@ -161,7 +161,7 @@ function rewriteValue(value: string, scope: Scope): RewriteValueResult {
 
 type ExprNode =
   | { kind: 'value'; go: string; tStart: number; tEnd: number; charMap: number[] }
-  | { kind: 'call'; name: string; args: ExprNode[] };
+  | { kind: 'call'; name: string; nameStart: number; nameEnd: number; args: ExprNode[] };
 
 interface ValueSpan {
   tStart: number;
@@ -174,9 +174,9 @@ interface ValueSpan {
  * Rewrites a full pipeline (commands joined by `|`) into a single Go expression:
  * value commands become their field/var rewrite, call commands become
  * `name(arg, ...)`, and pipes fold right-to-left (`a | b` -> `b(a)`). The charMap
- * relocates template offsets into the generated source; it is precise for value
- * and argument spans (where the completion cursor lands) and approximate for
- * function-name and pipe characters.
+ * relocates template offsets into the generated source; it is precise for value,
+ * argument, and function-name spans (where completion/diagnostics land) and
+ * approximate only for pipe and whitespace characters.
  */
 export function rewritePipeline(pipeline: string, scope: Scope): RewriteResult {
   const commands = parsePipeline(pipeline);
@@ -203,8 +203,14 @@ export function rewritePipeline(pipeline: string, scope: Scope): RewriteResult {
     }
     expr =
       expr === undefined
-        ? { kind: 'call', name: cmd.name, args }
-        : { kind: 'call', name: cmd.name, args: [expr, ...args] };
+        ? { kind: 'call', name: cmd.name, nameStart: cmd.nameStart, nameEnd: cmd.nameEnd, args }
+        : {
+            kind: 'call',
+            name: cmd.name,
+            nameStart: cmd.nameStart,
+            nameEnd: cmd.nameEnd,
+            args: [expr, ...args],
+          };
   }
 
   if (expr === undefined) return { go: '', charMap: [0] };
@@ -225,6 +231,18 @@ function flattenExpr(node: ExprNode, spans: ValueSpan[], pos: { n: number }): st
   }
 
   const parts: string[] = [];
+  // The function name is emitted verbatim, so it maps 1:1 (identity charMap) to
+  // its own Go span. Recording it as a span keeps function-name diagnostics
+  // (e.g. `undefined: sh`) mapped back onto the name instead of snapping to the
+  // nearest value argument.
+  const nameCharMap: number[] = [];
+  for (let k = 0; k <= node.name.length; k++) nameCharMap.push(k);
+  spans.push({
+    tStart: node.nameStart,
+    tEnd: node.nameEnd,
+    charMap: nameCharMap,
+    goStart: pos.n,
+  });
   parts.push(node.name);
   pos.n += node.name.length;
   parts.push('(');
@@ -271,6 +289,7 @@ interface Segment {
   pipeStart: number;
   pipeEnd: number;
   goStart: number;
+  goLength: number;
   charMap: number[];
 }
 
@@ -304,7 +323,7 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push('\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
         break;
       }
       case 'var': {
@@ -327,7 +346,7 @@ function emitNodes(
         push(go);
         push('\n');
         push(`\t_ = ${scope.vars.get(node.name) ?? undefinedVarRef(node.name)}\n`);
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
         break;
       }
       case 'if': {
@@ -336,7 +355,7 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push(' {\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
         emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
         push('\t}\n');
         if (node.elseBody && node.elseBody.length > 0) {
@@ -356,7 +375,7 @@ function emitNodes(
         const goStart = state.goLength;
         push(go);
         push(' {\n');
-        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+        segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
 
         const loopScope = childScope(scope, itVar);
         if (vars) {
@@ -388,7 +407,7 @@ function emitNodes(
           push(go);
           push('\n');
           push(`\t\t_ = ${wVar}\n`);
-          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
 
           const withScope = node.var ? childScope(scope) : childScope(scope, wVar);
           if (node.var) withScope.vars.set(node.var, wVar);
@@ -431,24 +450,14 @@ function emitNodes(
           push(go);
           push('\n');
           push(`\t\t_ = ${wVar}\n`);
-          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, charMap });
+          segments.push({ pipeStart: node.pipeStart, pipeEnd: node.pipeEnd, goStart, goLength: go.length, charMap });
 
           emitNodes(parts, segments, node.body, childScope(scope, wVar), nextId, state);
           push('\t}\n');
-          if (node.elseBody && node.elseBody.length > 0) {
-            push('\t{\n');
-            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
-            push('\t}\n');
-          }
         } else {
           push('\t{\n');
           emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
           push('\t}\n');
-          if (node.elseBody && node.elseBody.length > 0) {
-            push('\t{\n');
-            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
-            push('\t}\n');
-          }
         }
         break;
       }
@@ -546,7 +555,7 @@ function mapGoOffsetToTemplate(segments: Segment[], goOffset: number): number {
   let best = -1;
   let bestDist = Infinity;
   for (const seg of segments) {
-    const maxGo = seg.goStart + seg.charMap[seg.charMap.length - 1];
+    const maxGo = seg.goStart + seg.goLength;
     if (goOffset < seg.goStart || goOffset > maxGo) continue;
     for (let t = 0; t < seg.charMap.length; t++) {
       const go = seg.goStart + seg.charMap[t];

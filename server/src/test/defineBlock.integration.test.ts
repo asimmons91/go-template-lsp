@@ -36,8 +36,3 @@ test('completes a field narrowed by a {{block}} pipeline', async () => {
   const labels = await completeAt('{{ .C');
   assert.ok(labels.includes('City'), `expected 'City' inside block, got: ${labels.join(', ')}`);
 });
-
-test('completes the outer dot type inside a {{block}} else branch', async () => {
-  const labels = await completeAt('{{ .A');
-  assert.ok(labels.includes('Age'), `expected 'Age' inside block else, got: ${labels.join(', ')}`);
-});

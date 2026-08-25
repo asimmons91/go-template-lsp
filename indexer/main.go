@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"os"
 
@@ -25,6 +26,13 @@ type Function struct {
 	// lives in a scanned (workspace) package. Empty for cross-package functions
 	// (e.g. strings.ToUpper) whose declaration syntax isn't loaded.
 	Doc string `json:"doc,omitempty"`
+	// File, Line, and Character locate the function's declaration (0-based, to
+	// match LSP Position directly) when it lives in a scanned (workspace)
+	// package. Empty/zero for cross-package functions and bundled/known-library
+	// entries with no loaded declaration syntax.
+	File      string `json:"file,omitempty"`
+	Line      int    `json:"line,omitempty"`
+	Character int    `json:"character,omitempty"`
 }
 
 type Result struct {
@@ -124,7 +132,7 @@ func indexFuncMapLiteral(lit *ast.CompositeLit, pkg *packages.Package, docs map[
 // indexFuncMapEntry resolves one (name, value) pair to a function signature and
 // merges it into byName (first definition of a name wins).
 func indexFuncMapEntry(name string, value ast.Expr, pkg *packages.Package, docs map[types.Object]string, byName map[string]Function) {
-	sig, obj := resolveSignature(value, pkg.TypesInfo)
+	sig, obj, pos := resolveSignature(value, pkg.TypesInfo)
 	if sig == nil {
 		return
 	}
@@ -134,6 +142,12 @@ func indexFuncMapEntry(name string, value ast.Expr, pkg *packages.Package, docs 
 	fn := signatureToFunction(name, sig, pkg.Types)
 	if obj != nil {
 		fn.Doc = docs[obj]
+	}
+	if pos.IsValid() {
+		p := pkg.Fset.Position(pos)
+		fn.File = p.Filename
+		fn.Line = p.Line - 1
+		fn.Character = p.Column - 1
 	}
 	byName[name] = fn
 }
@@ -215,18 +229,27 @@ func isFuncMapType(t types.Type) bool {
 	return pkg.Path() == "text/template" || pkg.Path() == "html/template"
 }
 
-func resolveSignature(expr ast.Expr, info *types.Info) (*types.Signature, types.Object) {
+func resolveSignature(expr ast.Expr, info *types.Info) (*types.Signature, types.Object, token.Pos) {
 	switch e := expr.(type) {
 	case *ast.Ident:
-		return objSignature(info.Uses[e]), info.Uses[e]
+		obj := info.Uses[e]
+		return objSignature(obj), obj, objPos(obj)
 	case *ast.SelectorExpr:
-		return objSignature(info.Uses[e.Sel]), info.Uses[e.Sel]
+		obj := info.Uses[e.Sel]
+		return objSignature(obj), obj, objPos(obj)
 	case *ast.FuncLit:
 		if sig, ok := info.TypeOf(e).(*types.Signature); ok {
-			return sig, nil
+			return sig, nil, e.Pos()
 		}
 	}
-	return nil, nil
+	return nil, nil, token.NoPos
+}
+
+func objPos(obj types.Object) token.Pos {
+	if obj == nil {
+		return token.NoPos
+	}
+	return obj.Pos()
 }
 
 func objSignature(obj types.Object) *types.Signature {

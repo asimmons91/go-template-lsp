@@ -67,7 +67,6 @@ export type TemplateNode =
       pipeStart: number;
       pipeEnd: number;
       body: TemplateNode[];
-      elseBody?: TemplateNode[];
     };
 
 export interface ActionSpan {
@@ -383,7 +382,6 @@ export function parseTemplate(text: string): TemplateNode[] {
           const { pipeStart, pipeEnd } = pipeRange(span, c.pipeline ?? '');
           i++;
           const body = parseBody();
-          const elseBody = parseElseTail();
           if (i < spans.length && classify(spans[i].content).type === 'end') i++;
           nodes.push({
             kind: 'block',
@@ -394,7 +392,6 @@ export function parseTemplate(text: string): TemplateNode[] {
             pipeStart,
             pipeEnd,
             body,
-            elseBody,
           });
           continue;
         }
@@ -445,8 +442,15 @@ export function validateTemplateSyntax(text: string): TemplateSyntaxIssue[] {
         stack.pop();
       }
     } else if (c.type === 'else' || c.type === 'elseif') {
+      const top = stack[stack.length - 1];
       if (stack.length === 0) {
         issues.push({ start: span.start, end: span.end, message: `Unexpected {{${c.type}}}.` });
+      } else if (top.label === 'block' || top.label === 'define') {
+        issues.push({
+          start: span.start,
+          end: span.end,
+          message: `unexpected {{else}} in ${top.label} clause`,
+        });
       }
     }
   }
@@ -469,8 +473,8 @@ export interface TemplateBody {
  * in the source, keyed by name, so the autoescape classifier can resolve a
  * `{{template "name"}}` call into its definition body for context-sensitive
  * escaping. `start`/`end` are the directive's own action span (used to attribute
- * an error found in an uncalled definition). A `block`'s body is its main arm
- * (up to the first `{{else}}`). First definition wins on a name collision.
+ * an error found in an uncalled definition). First definition wins on a name
+ * collision.
  */
 export function extractTemplateBodies(text: string): Map<string, TemplateBody> {
   const bodies = new Map<string, TemplateBody>();
@@ -497,18 +501,6 @@ export function extractTemplateBodies(text: string): Map<string, TemplateBody> {
       case 'block':
         stack.push({ kind: c.type, name: c.name, bodyStart: span.end, span });
         break;
-      case 'else':
-      case 'elseif': {
-        const top = stack[stack.length - 1];
-        if (top && top.kind === 'block' && top.name && !bodies.has(top.name)) {
-          bodies.set(top.name, {
-            body: text.slice(top.bodyStart, span.start),
-            start: top.span.start,
-            end: top.span.end,
-          });
-        }
-        break;
-      }
       case 'end': {
         const top = stack.pop();
         if (top && top.name && !bodies.has(top.name)) {
@@ -540,12 +532,7 @@ export function findPipelineAtOffset(
       }
       continue;
     }
-    if (
-      node.kind === 'if' ||
-      node.kind === 'range' ||
-      node.kind === 'with' ||
-      node.kind === 'block'
-    ) {
+    if (node.kind === 'if' || node.kind === 'range' || node.kind === 'with') {
       if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
         return { pipeline: node.pipeline, pipeStart: node.pipeStart };
       }
@@ -556,8 +543,18 @@ export function findPipelineAtOffset(
         if (foundElse) return foundElse;
       }
     }
+    if (node.kind === 'block') {
+      if (node.pipeline !== undefined && node.pipeStart <= offset && offset <= node.pipeEnd) {
+        return { pipeline: node.pipeline, pipeStart: node.pipeStart };
+      }
+      const found = findPipelineAtOffset(node.body, offset);
+      if (found) return found;
+      continue;
+    }
     if (node.kind === 'define') {
-      return findPipelineAtOffset(node.body, offset);
+      const found = findPipelineAtOffset(node.body, offset);
+      if (found) return found;
+      continue;
     }
   }
   return undefined;
