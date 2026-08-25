@@ -173,9 +173,6 @@ export function getGoTemplateMode(
         return templateNames.getDefinitions(directive.name);
       }
 
-      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
-      if (!gotype) return undefined;
-
       const nodes = parseTemplate(text);
       const pipe = findPipelineAtOffset(nodes, offset);
       if (!pipe) return undefined;
@@ -200,6 +197,9 @@ export function getGoTemplateMode(
           ),
         ];
       }
+
+      const gotype = (await resolveGotype(document, executeSiteIndex)).gotype;
+      if (!gotype) return undefined;
 
       const funcMap = commands.some((c) => c.isCall) ? await funcMapIndexer.getIndex() : undefined;
       const { uri, goSource, mapOffset } = transpileTemplate(document.uri, text, gotype, funcMap);

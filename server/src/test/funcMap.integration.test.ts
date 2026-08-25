@@ -123,6 +123,31 @@ test('goes to definition on a stdlib-backed FuncMap entry', async () => {
   );
 });
 
+test('goes to definition on an inline FuncMap entry without a gotype comment', async () => {
+  const text = '<p>{{ .Name | shout }}</p>';
+  const token = '{{ .Name | shout';
+  const cursorOffset = text.indexOf(token) + token.length;
+  const uri = `file://${path.join(fixtureRoot, 'views', 'no-gotype.gohtml')}`;
+
+  const document = TextDocument.create(uri, 'gotmpl', 1, text);
+  const position = document.positionAt(cursorOffset);
+
+  const languageModes = getLanguageModes('gopls', `file://${fixtureRoot}`);
+  try {
+    const result = languageModes.getModeAtPosition(document, position);
+    assert.ok(result, 'expected the gotemplate mode to be resolved inside the {{ }} action');
+    assert.ok(result.mode.doDefinition, 'expected the gotemplate mode to support doDefinition');
+    const defs = await result.mode.doDefinition(document, position, result.regions);
+    assert.ok(defs && defs.length === 1, `expected one definition, got: ${JSON.stringify(defs)}`);
+    assert.ok(
+      defs[0].uri.endsWith('/views/funcMap.go'),
+      `expected definition in views/funcMap.go, got: ${defs[0].uri}`,
+    );
+  } finally {
+    languageModes.dispose();
+  }
+});
+
 test('go to definition on a builtin function is a no-op', async () => {
   const defs = await definitionAt('{{ printf');
   assert.ok(
