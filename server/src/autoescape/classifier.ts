@@ -327,13 +327,6 @@ class Classifier {
             this.consumeBody();
           } else {
             this.walkBody(zeroContext(), undefined);
-            if (
-              this.index < this.spans.length &&
-              classify(this.spans[this.index].content).type === 'else'
-            ) {
-              this.index++;
-              this.walkBody(zeroContext(), undefined);
-            }
             this.consumeEnd();
           }
           continue;

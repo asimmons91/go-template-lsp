@@ -117,14 +117,6 @@ test('parses a block name and pipeline', () => {
   assert.equal(node.body.length, 1);
 });
 
-test('parses a block else branch', () => {
-  const node = single('{{block "content" .Address}}{{ .C }}{{else}}{{ .N }}{{end}}');
-  assert.equal(node.kind, 'block');
-  if (node.kind !== 'block') return;
-  assert.equal(node.body.length, 1);
-  assert.equal(node.elseBody?.length, 1);
-});
-
 test('does not end a span on }} inside an action comment', () => {
   const spans = scanActions('{{ if true /* }} */ .A }}');
   assert.equal(spans.length, 1);

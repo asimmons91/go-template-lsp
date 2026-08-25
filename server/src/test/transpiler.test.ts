@@ -222,16 +222,6 @@ test('rebinds dot inside a block body', () => {
   assert.match(goSource, /_ = w0\.City\n/);
 });
 
-test('emits block else with the outer dot', () => {
-  const { goSource } = transpileTemplate(
-    uri,
-    '{{block "content" .Address}}{{ .City }}{{else}}{{ .Name }}{{end}}',
-    gotype,
-  );
-  assert.match(goSource, /_ = w0\.City\n/);
-  assert.match(goSource, /_ = dot\.Name\n/);
-});
-
 test('emits range else as a valid scope block, not a for-else', () => {
   const { goSource } = transpileTemplate(
     uri,

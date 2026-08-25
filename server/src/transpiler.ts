@@ -435,20 +435,10 @@ function emitNodes(
 
           emitNodes(parts, segments, node.body, childScope(scope, wVar), nextId, state);
           push('\t}\n');
-          if (node.elseBody && node.elseBody.length > 0) {
-            push('\t{\n');
-            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
-            push('\t}\n');
-          }
         } else {
           push('\t{\n');
           emitNodes(parts, segments, node.body, childScope(scope), nextId, state);
           push('\t}\n');
-          if (node.elseBody && node.elseBody.length > 0) {
-            push('\t{\n');
-            emitNodes(parts, segments, node.elseBody, childScope(scope), nextId, state);
-            push('\t}\n');
-          }
         }
         break;
       }
